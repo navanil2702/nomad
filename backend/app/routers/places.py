@@ -45,6 +45,79 @@ def place_photo(
     return RedirectResponse(uri, status_code=307)
 
 
+@router.post("/providers/check")
+def provider_check() -> dict:
+    """Actually call each configured provider and report what came back.
+
+    /api/providers only reports what *this* process has observed, and on
+    serverless the instance answering a status query is rarely the one that
+    built your trip — so a real failure shows up there as "no calls yet". This
+    exercises the providers in-process, which is the only way to get a
+    trustworthy answer out of a deployment.
+    """
+    from ..services import google_places, llm
+
+    settings = get_settings()
+    results: dict[str, dict] = {}
+
+    # --- LLM --------------------------------------------------------------
+    if settings.live_ai:
+        before = providers.registry.state("ai").last_error
+        reply = llm.complete_json(
+            '{"task": "Reply with JSON {\\"ok\\": true} and nothing else."}',
+            system="You reply with JSON only.",
+            max_tokens=32,
+        )
+        state = providers.registry.state("ai")
+        results["ai"] = {
+            "provider": settings.llm_provider,
+            "model": settings.llm_model,
+            "ok": reply is not None,
+            "reply": reply,
+            "error": None if reply is not None else (state.last_error or before),
+        }
+    else:
+        results["ai"] = {"ok": False, "error": "no GROQ_API_KEY or OPENAI_API_KEY set"}
+
+    # --- Places -----------------------------------------------------------
+    if settings.google_maps_api_key:
+        try:
+            suggestions = google_places.autocomplete_cities("lisb", 3)
+            results["places"] = {
+                "ok": bool(suggestions),
+                "sample": [s["label"] for s in (suggestions or [])],
+                "error": None if suggestions else "no suggestions returned",
+            }
+        except Exception as exc:
+            results["places"] = {"ok": False, "error": providers.describe(exc)}
+    else:
+        results["places"] = {"ok": False, "error": "no GOOGLE_MAPS_API_KEY set"}
+
+    # --- Weather ----------------------------------------------------------
+    if settings.openweather_api_key:
+        from ..models.schemas import Coordinates
+        from ..services import weather as weather_svc
+        from datetime import date
+
+        try:
+            forecast = weather_svc._live_forecast(
+                Coordinates(lat=51.5072, lng=-0.1276),
+                date.today(),
+                1,
+                settings.openweather_api_key,
+            )
+            results["weather"] = {
+                "ok": bool(forecast),
+                "error": None if forecast else "no forecast returned",
+            }
+        except Exception as exc:
+            results["weather"] = {"ok": False, "error": providers.describe(exc)}
+    else:
+        results["weather"] = {"ok": False, "error": "no OPENWEATHER_API_KEY set"}
+
+    return {"checked_in_process": True, "results": results}
+
+
 @router.get("/providers")
 def provider_status() -> dict:
     """Which providers are live right now, and why any of them are not.
