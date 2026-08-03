@@ -11,6 +11,7 @@ from ..data.destinations import DESTINATIONS
 from ..data.knowledge import CURRENCY_RATES, CURRENCY_SYMBOLS
 from ..models.schemas import Trip
 from ..services import (
+    fx,
     google_places,
     places as places_svc,
     providers,
@@ -91,25 +92,32 @@ def search_destinations(q: str = Query("", max_length=80), limit: int = 6) -> li
 @router.get("/currency/convert")
 def convert(amount: float, base: str = "USD", target: str = "EUR") -> dict:
     base, target = base.upper(), target.upper()
-    if base not in CURRENCY_RATES or target not in CURRENCY_RATES:
+    table, source = fx.rates()
+    if base not in table or target not in table:
         raise HTTPException(status_code=400, detail="Unsupported currency")
-    usd = amount / CURRENCY_RATES[base]
-    converted = usd * CURRENCY_RATES[target]
+    usd = amount / table[base]
+    converted = usd * table[target]
     return {
         "amount": amount,
         "base": base,
         "target": target,
-        "rate": round(CURRENCY_RATES[target] / CURRENCY_RATES[base], 6),
+        "rate": round(table[target] / table[base], 6),
         "converted": round(converted, 2),
         "base_symbol": CURRENCY_SYMBOLS.get(base, ""),
         "target_symbol": CURRENCY_SYMBOLS.get(target, ""),
-        "source": "indicative offline rates",
+        "source": source,
     }
 
 
 @router.get("/currency/rates")
 def rates() -> dict:
-    return {"base": "USD", "rates": CURRENCY_RATES, "symbols": CURRENCY_SYMBOLS}
+    table, source = fx.rates()
+    return {
+        "base": "USD",
+        "rates": table,
+        "symbols": CURRENCY_SYMBOLS,
+        "source": source,
+    }
 
 
 @router.get("/timezone")

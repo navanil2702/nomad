@@ -150,7 +150,10 @@ def _generated_catalog(name: str) -> dict:
         "language": "English",
         "currency": "USD",
         "timezone": "UTC",
-        "utc_offset_hours": round(_stable_float(key + "tz", -8, 10)),
+        # Unknown city: UTC rather than an invented offset. A random
+        # timezone reads as authoritative and is wrong; UTC is at least
+        # obviously a default. Live resolution supplies the real one.
+        "utc_offset_hours": 0.0,
         "center": {"lat": round(lat, 5), "lng": round(lng, 5)},
         "climate": "temperate",
         "daily_cost_index": round(_stable_float(key + "ci", 0.6, 1.2), 2),
@@ -492,7 +495,10 @@ def base_duration(place: Place) -> int:
 
 
 def currency_rate(currency: str) -> float:
-    return CURRENCY_RATES.get(currency.upper(), 1.0)
+    """Units of `currency` per 1 USD. Live when available, table otherwise."""
+    from . import fx
+
+    return fx.rate(currency)
 
 
 def maps_url(place: Place) -> str:

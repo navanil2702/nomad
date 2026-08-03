@@ -46,7 +46,7 @@ export function ToolboxPanel({ trip }: { trip: Trip }) {
       <PhrasesCard info={info} />
       <EmergencyCard info={info} />
       <CurrencyCard info={info} trip={trip} />
-      <TimeZoneCard trip={trip} />
+      <TimeZoneCard trip={trip} info={info} />
       <OfflineCard trip={trip} />
       <ShareCard trip={trip} />
     </div>
@@ -237,24 +237,48 @@ function CurrencyCard({ info, trip }: { info: LocalInfo; trip: Trip }) {
 
 /* ---------------------------------------------------------------- time zone */
 
-function TimeZoneCard({ trip }: { trip: Trip }) {
-  const [homeOffset, setHomeOffset] = React.useState(() => -new Date().getTimezoneOffset() / 60);
-  const [data, setData] = React.useState<Awaited<ReturnType<typeof api.timezone>> | null>(null);
+function TimeZoneCard({ trip, info }: { trip: Trip; info: LocalInfo }) {
+  const [homeOffset, setHomeOffset] = React.useState(
+    () => -new Date().getTimezoneOffset() / 60,
+  );
+  const [now, setNow] = React.useState(() => Date.now());
 
   React.useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      api
-        .timezone(trip.preferences.destination, homeOffset)
-        .then((d) => !cancelled && setData(d))
-        .catch(() => !cancelled && setData(null));
-    load();
-    const id = setInterval(load, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // The trip's own catalog carries the destination's real timezone, resolved
+  // when it was planned. Asking the API to look it up again by name would
+  // re-resolve a bare string with no coordinates — which is how this card came
+  // to claim a town in Kerala was ten hours behind India.
+  const data = React.useMemo(() => {
+    const utcMs = now + new Date().getTimezoneOffset() * 60_000;
+    const at = (offsetHours: number) => new Date(utcMs + offsetHours * 3_600_000);
+    const fmtTime = (d: Date) =>
+      `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+    const local = at(info.utc_offset_hours);
+    const home = at(homeOffset);
+    const delta = info.utc_offset_hours - homeOffset;
+    const name = trip.preferences.destination.split(",")[0].trim();
+
+    return {
+      destination: name,
+      timezone: info.timezone,
+      local_time: fmtTime(local),
+      local_date: local.toLocaleDateString("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      }),
+      home_time: fmtTime(home),
+      difference_hours: delta,
+      summary: delta
+        ? `${name} is ${Math.abs(delta)}h ${delta > 0 ? "ahead of" : "behind"} you`
+        : `${name} is in your time zone`,
     };
-  }, [trip.preferences.destination, homeOffset]);
+  }, [now, info.utc_offset_hours, info.timezone, homeOffset, trip.preferences.destination]);
 
   return (
     <Card className="p-5">
@@ -267,20 +291,22 @@ function TimeZoneCard({ trip }: { trip: Trip }) {
         <div className="rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground">Where you are</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {data?.home_time ?? "—"}
+            {data.home_time}
           </p>
           <p className="text-xs text-muted-foreground">UTC{homeOffset >= 0 ? "+" : ""}{homeOffset}</p>
         </div>
         <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
-          <p className="text-xs text-muted-foreground">{data?.destination ?? "There"}</p>
+          <p className="text-xs text-muted-foreground">{data.destination}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {data?.local_time ?? "—"}
+            {data.local_time}
           </p>
-          <p className="text-xs text-muted-foreground">{data?.local_date}</p>
+          <p className="text-xs text-muted-foreground">
+            {data.local_date} · {data.timezone}
+          </p>
         </div>
       </div>
 
-      <p className="mt-3 text-sm text-muted-foreground">{data?.summary}</p>
+      <p className="mt-3 text-sm text-muted-foreground">{data.summary}</p>
 
       <div className="mt-3 space-y-1.5">
         <Label htmlFor="home-offset">Your UTC offset</Label>

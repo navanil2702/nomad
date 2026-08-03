@@ -187,6 +187,12 @@ def provider_status() -> dict:
                 ),
             ),
             "weather": entry("weather", "seeded climate model"),
+            "fx": {
+                **observed.get("fx", {}),
+                "configured": True,
+                "mode": observed.get("fx", {}).get("mode", "ready"),
+                "fallback": "hand-written rate table, which drifts",
+            },
             "places": entry(
                 "places", "curated catalog for 6 cities, generated elsewhere"
             ),
