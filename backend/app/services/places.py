@@ -245,7 +245,11 @@ _PRICE_SANITY_CEILING = 8.0
 
 
 def _apply_estimated_costs(
-    places: list[Place], baseline: dict[str, float], destination: str, country: str
+    places: list[Place],
+    baseline: dict[str, float],
+    destination: str,
+    country: str,
+    currency: str = "",
 ) -> tuple[dict[str, float], bool]:
     """Replace crude cost estimates with model estimates where they look sane.
 
@@ -259,6 +263,7 @@ def _apply_estimated_costs(
     estimates = llm.estimate_place_costs(
         destination=destination,
         country=country,
+        local_currency=currency,
         places=[
             {
                 "id": p.id,
@@ -414,7 +419,7 @@ def resolve(destination: str, *, allow_live: bool = True) -> Destination:
                 for p in live_places
             }
             costs, estimated = _apply_estimated_costs(
-                live_places, bands, destination, meta["country"]
+                live_places, bands, destination, meta["country"], meta["currency"]
             )
             meta["pricing"] = "estimated" if estimated else "price-band"
 
@@ -443,7 +448,7 @@ def resolve(destination: str, *, allow_live: bool = True) -> Destination:
         # prices and are left alone — a model guess would be a downgrade.
         if not curated:
             costs, are_local = _apply_estimated_costs(
-                places, costs, destination, meta["country"]
+                places, costs, destination, meta["country"], meta["currency"]
             )
             meta["pricing"] = "estimated" if are_local else "template"
         else:

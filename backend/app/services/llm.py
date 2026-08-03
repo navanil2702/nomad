@@ -88,6 +88,7 @@ def estimate_place_costs(
     destination: str,
     country: str,
     places: list[dict],
+    local_currency: str = "",
 ) -> dict[str, float] | None:
     """Ask for a realistic per-person cost, in USD, for each place.
 
@@ -115,17 +116,28 @@ def estimate_place_costs(
             "destination": destination,
             "country": country,
             "places": indexed,
+            "local_currency": local_currency,
             "task": (
-                "For each place give the realistic cost for ONE person in USD. "
-                "For attractions that is standard adult admission — use 0 for "
-                "places that are free to enter, which includes most parks, "
-                "temples, markets, squares and viewpoints. For restaurants, "
-                "cafes and bars it is a typical spend per head for one visit, "
-                "including a drink. Use local prices for this city, not "
-                "international averages. Return JSON shaped exactly as "
-                '{"costs": {"0": <number>, "1": <number>, ...}} keyed by the '
-                '"i" value of each place, with an entry for every place, and '
-                "no commentary."
+                "Give the realistic cost for ONE person at each place, as a "
+                "number in USD.\n"
+                "RULES:\n"
+                "1. Use 0 for anywhere free to enter. Most religious sites, "
+                "ghats, parks, gardens, squares, markets, bazaars, beaches "
+                "and street viewpoints charge nothing. Free is common — do "
+                "not invent a fee to avoid answering 0.\n"
+                "2. Otherwise use the actual local price you know for this "
+                "specific place or its city, converted to USD. In low-cost "
+                "countries that is often under $5, and museum admission is "
+                "frequently $1-4.\n"
+                "3. For restaurants, cafes and bars give a typical spend per "
+                "head for one visit including a drink, at local prices.\n"
+                "4. Do NOT default to round figures like 5, 10 or 20. A round "
+                "number is a sign you are guessing in dollars rather than "
+                "recalling the local price. Use precise values such as 1.2, "
+                "3.6 or 0.75.\n"
+                'Return JSON shaped exactly as {"costs": {"0": <number>, '
+                '"1": <number>, ...}} keyed by the "i" value of each place, '
+                "with an entry for every place, and no commentary."
             ),
         },
         ensure_ascii=False,
