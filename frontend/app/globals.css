@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 220 22% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 22% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 22% 12%;
+
+    --primary: 168 62% 34%;
+    --primary-foreground: 160 60% 98%;
+
+    --secondary: 30 30% 94%;
+    --secondary-foreground: 220 22% 18%;
+
+    --muted: 35 22% 94%;
+    --muted-foreground: 220 10% 44%;
+
+    --accent: 20 90% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 150 62% 38%;
+    --warning: 33 92% 50%;
+
+    --border: 30 16% 88%;
+    --input: 30 16% 88%;
+    --ring: 168 62% 34%;
+
+    --radius: 0.9rem;
+  }
+
+  .dark {
+    --background: 222 30% 7%;
+    --foreground: 40 20% 96%;
+
+    --card: 222 26% 10%;
+    --card-foreground: 40 20% 96%;
+
+    --popover: 222 26% 10%;
+    --popover-foreground: 40 20% 96%;
+
+    --primary: 168 58% 46%;
+    --primary-foreground: 222 40% 8%;
+
+    --secondary: 222 20% 16%;
+    --secondary-foreground: 40 20% 96%;
+
+    --muted: 222 20% 15%;
+    --muted-foreground: 220 12% 62%;
+
+    --accent: 20 88% 62%;
+    --accent-foreground: 222 40% 8%;
+
+    --destructive: 0 68% 56%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 150 55% 48%;
+    --warning: 33 90% 58%;
+
+    --border: 222 18% 20%;
+    --input: 222 18% 20%;
+    --ring: 168 58% 46%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    @apply bg-primary/20;
+  }
+}
+
+@layer components {
+  /* The warm aurora behind the hero and section headers. */
+  .aurora {
+    background-image:
+      radial-gradient(50rem 30rem at 12% -8%, hsl(var(--primary) / 0.22), transparent 60%),
+      radial-gradient(42rem 26rem at 88% 4%, hsl(var(--accent) / 0.18), transparent 62%),
+      radial-gradient(38rem 24rem at 50% 108%, hsl(200 80% 55% / 0.14), transparent 60%);
+  }
+
+  .glass {
+    @apply border border-white/40 bg-white/70 backdrop-blur-xl;
+  }
+
+  .dark .glass {
+    @apply border-white/10 bg-white/[0.04];
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5;
+  }
+
+  .grid-lines {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-br from-primary via-primary to-accent bg-clip-text text-transparent;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
