@@ -8,13 +8,13 @@ A real-time travel companion. It builds a day-by-day plan around your budget,
 pace and the actual forecast — then keeps watching, and rewrites the plan
 before the problem reaches you.
 
-The whole product runs with **zero API keys and zero infrastructure**. Every
-external provider is optional; each one has an offline engine behind it.
+It uses **live Google Places, Google Maps, OpenWeather and OpenAI** when keys are
+configured, and falls back to offline engines when they are missing or failing —
+so it still runs end to end with **zero API keys and zero infrastructure**.
 
 > The live demo is on Vercel's free tier, so the first request after an idle
-> spell wakes the API and takes a few seconds. It runs on the offline engines —
-> no OpenAI, OpenWeather or Maps key — which is the point: everything you see
-> is the planner, not a model.
+> spell wakes the API and takes a few seconds. Check the badge in the header to
+> see which providers are actually live on it.
 
 ---
 
@@ -180,20 +180,39 @@ read-only share link.
 
 ---
 
-## Offline behaviour
+## Live providers, and what happens without them
 
-| Capability | With a key | Without |
+Every provider is tried first. The offline engine is the fallback, never the
+default.
+
+| Capability | Live | Fallback |
 | --- | --- | --- |
-| AI narration | OpenAI (`OPENAI_MODEL`, default `gpt-4o-mini`) | Template phrasing — decisions are identical |
+| Places | Google Places API (New) — real venues, hours, ratings, price levels, photos | Curated catalog for six cities; generated catalog anywhere else |
+| Maps | Google Maps JS API — real tiles, markers, day routes | Coordinate projection over a styled canvas; pins still deep-link out |
 | Weather | OpenWeather 5-day forecast | Seeded climate model, stable per trip |
-| Places | Google Places photos | 25-place curated catalog per city |
-| Maps | Google Maps tiles | Coordinate projection; deep links still work |
+| AI | OpenAI (`OPENAI_MODEL`, default `gpt-4o-mini`) for phrasing and for classifying messages the keywords miss | Template phrasing; keyword classification only. **Itinerary decisions are identical either way** |
 | Database | Supabase Postgres | JSON files under `backend/.data/` |
 | Auth | Google Identity Services | Local demo profile |
 
-Curated cities: Tokyo, Paris, Bali, Rome, Barcelona, Lisbon. Anywhere else
-generates a coherent catalog so the product never dead-ends on an unknown
-destination.
+### Fallbacks are visible, not silent
+
+Mock weather looks exactly like real weather, which makes a silent fallback the
+most dangerous failure mode here. So `GET /api/providers` reports, per provider,
+whether it is `live`, `ready` (configured but not yet called), `fallback` (tried
+and failed, with the reason) or `offline` (no key). The header badge in the app
+shows the same thing.
+
+Failures are cached for two minutes, so one outage costs a single slow request
+rather than one per page load.
+
+### Keys
+
+Set on the backend: `GOOGLE_MAPS_API_KEY`, `OPENWEATHER_API_KEY`,
+`OPENAI_API_KEY`. Set on the frontend: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` for the
+map itself — a **separate, browser-restricted key**, because that one is public.
+
+Places photos are proxied through `/api/places/photo`, which resolves them to
+signed, key-less URLs server-side, so the Places key never reaches a browser.
 
 > The spec asked for GPT-5.5. That isn't a model I can verify exists, so the
 > model id is an env var (`OPENAI_MODEL`) defaulting to `gpt-4o-mini`. Point it

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
-from .routers import companion, expenses, journal, tools, trips
+from .routers import companion, expenses, journal, places, tools, trips
 from .seed import seed_if_empty
 from .store import get_store
 
@@ -60,6 +60,7 @@ app.include_router(trips.router)
 app.include_router(companion.router)
 app.include_router(expenses.router)
 app.include_router(journal.router)
+app.include_router(places.router)
 app.include_router(tools.router)
 
 

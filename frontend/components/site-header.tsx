@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Compass, LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ProviderBadge } from "@/components/provider-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ export function SiteHeader({ sticky = true }: { sticky?: boolean }) {
           <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
             <Link href="/trips">My trips</Link>
           </Button>
+          <ProviderBadge />
           <ThemeToggle />
           {ready &&
             (user ? (

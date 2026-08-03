@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/controls";
+import { GoogleMapCanvas, hasGoogleMaps } from "@/components/trip/google-map";
 import { api } from "@/lib/api";
 import { categoryIcon, CATEGORY_LABEL, placeGradient } from "@/lib/place-visual";
 import type { MapMarker, MapPayload, NearbyPlace, Trip } from "@/lib/types";
@@ -52,6 +53,11 @@ export function MapPanel({ trip }: { trip: Trip }) {
   const [selected, setSelected] = React.useState<MapMarker | null>(null);
   const [nearby, setNearby] = React.useState<NearbyPlace[] | null>(null);
   const [loadingNearby, setLoadingNearby] = React.useState(false);
+  // Set if the Maps script is blocked or the key is rejected, so a failed
+  // live map degrades to the projection instead of an empty grey box.
+  const [mapsError, setMapsError] = React.useState<string | null>(null);
+
+  const useLiveMap = hasGoogleMaps && !mapsError;
 
   React.useEffect(() => {
     api.getMap(trip.id).then(setPayload).catch(() => setPayload(null));
@@ -156,6 +162,17 @@ export function MapPanel({ trip }: { trip: Trip }) {
         </div>
 
         <Card className="relative aspect-[4/3] overflow-hidden sm:aspect-[16/10]">
+          {useLiveMap ? (
+            <GoogleMapCanvas
+              trip={trip}
+              markers={markers}
+              selectedId={selected?.place.id ?? null}
+              dayFilter={dayFilter}
+              onSelect={setSelected}
+              onUnavailable={setMapsError}
+            />
+          ) : (
+            <>
           {/* backdrop */}
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.07] via-sky-500/[0.05] to-orange-500/[0.06]" />
           <div className="grid-lines absolute inset-0 opacity-40" />
@@ -219,11 +236,15 @@ export function MapPanel({ trip }: { trip: Trip }) {
                 </button>
               );
             })}
+            </>
+          )}
 
-          <div className="absolute bottom-3 left-3 rounded-lg bg-background/85 px-2.5 py-1.5 text-[11px] text-muted-foreground backdrop-blur">
-            {payload.google_maps_key_present
-              ? "Google Maps key detected"
-              : "Offline projection — pins link out to Google Maps"}
+          <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-background/85 px-2.5 py-1.5 text-[11px] text-muted-foreground backdrop-blur">
+            {useLiveMap
+              ? "Live Google Maps"
+              : mapsError
+                ? `Offline projection — ${mapsError}`
+                : "Offline projection — pins link out to Google Maps"}
           </div>
         </Card>
 
@@ -319,9 +340,24 @@ function PlaceDetail({
 
   return (
     <Card className="overflow-hidden">
-      {/* "photo" */}
-      <div className="relative h-32" style={placeGradient(place)}>
-        <Icon className="absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 text-white/80" />
+      {/* A real Places photo when there is one, the deterministic gradient
+          otherwise — so the card looks intentional either way. */}
+      <div className="relative h-32 overflow-hidden" style={placeGradient(place)}>
+        {place.photo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={place.photo}
+            alt={place.name}
+            loading="lazy"
+            className="absolute inset-0 size-full object-cover"
+            onError={(e) => {
+              // Fall back to the gradient underneath.
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        ) : (
+          <Icon className="absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 text-white/80" />
+        )}
         <button
           onClick={onClose}
           className="absolute right-2.5 top-2.5 rounded-full bg-black/25 p-1.5 text-white backdrop-blur transition-colors hover:bg-black/40"

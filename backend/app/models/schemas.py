@@ -240,6 +240,9 @@ class ItineraryChange(BaseModel):
 class ProactiveAlert(BaseModel):
     id: str = Field(default_factory=lambda: _id("pro"))
     trigger: Literal["weather", "budget", "pace", "closing", "arrival"]
+    # Stable identity for "have I already raised this?". Set by the scanner
+    # that produced the alert, so both sides of the check agree.
+    dedupe_key: str = ""
     severity: Literal["info", "warning", "severe"] = "info"
     title: str
     message: str

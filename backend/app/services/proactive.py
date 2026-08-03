@@ -102,6 +102,7 @@ def _scan_weather(
         alerts.append(
             ProactiveAlert(
                 trigger="weather",
+                dedupe_key=key,
                 severity="severe" if forecast.condition == "storm" else "warning",
                 title=f"{forecast.description} {_relative_day(day, today)}",
                 message=message,
@@ -144,6 +145,7 @@ def _scan_budget(trip: Trip, today: date, existing: set[str]) -> list[ProactiveA
     return [
         ProactiveAlert(
             trigger="budget",
+            dedupe_key=key,
             severity="warning" if over < trip.preferences.budget * 0.2 else "severe",
             title=f"Spending is running {int((burn - progress) * 100)}% ahead",
             message=(
@@ -172,6 +174,7 @@ def _scan_pace(trip: Trip, today: date, existing: set[str]) -> list[ProactiveAle
         alerts.append(
             ProactiveAlert(
                 trigger="pace",
+                dedupe_key=key,
                 severity="info",
                 title=f"Days {a.day_number} and {b.day_number} are both heavy",
                 message=(
@@ -204,6 +207,7 @@ def _scan_closing(trip: Trip, today: date, existing: set[str]) -> list[Proactive
             return [
                 ProactiveAlert(
                     trigger="closing",
+                    dedupe_key=key,
                     severity="info",
                     title=f"{act.place.name} closes before you'd finish",
                     message=(
@@ -227,16 +231,9 @@ def scan(trip: Trip, today: date | None = None) -> list[ProactiveAlert]:
     today = today or date.today()
     dest = places_svc.resolve(trip.preferences.destination)
 
-    existing = set()
-    for a in trip.alerts:
-        if a.trigger == "weather":
-            existing.add(f"weather:{_day_date(trip, a.day_number)}")
-        elif a.trigger == "pace":
-            existing.add(f"pace:{_day_date(trip, a.day_number)}")
-        elif a.trigger == "budget":
-            existing.add(f"budget:{a.created_at[:10]}")
-        elif a.trigger == "closing":
-            existing.add(f"closing:{a.changes[0].activity_id}" if a.changes else a.title)
+    # Alerts carry the key they were raised under, so this never has to
+    # reconstruct it and get the format subtly wrong.
+    existing = {a.dedupe_key for a in trip.alerts if a.dedupe_key}
 
     new_alerts: list[ProactiveAlert] = []
     new_alerts += _scan_weather(trip, dest, today, existing)
@@ -251,11 +248,6 @@ def scan(trip: Trip, today: date | None = None) -> list[ProactiveAlert]:
 
     trip.alerts = new_alerts + trip.alerts
     return new_alerts
-
-
-def _day_date(trip: Trip, day_number: int | None) -> str:
-    day = trip.day(day_number) if day_number else None
-    return day.date.isoformat() if day else "?"
 
 
 def apply(trip: Trip, alert: ProactiveAlert) -> ProactiveAlert:

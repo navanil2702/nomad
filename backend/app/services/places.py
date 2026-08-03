@@ -11,9 +11,11 @@ import hashlib
 import re
 import unicodedata
 
+from ..core.config import get_settings
 from ..data.destinations import DESTINATIONS, GENERIC_TEMPLATE
 from ..data.knowledge import CURRENCY_RATES
 from ..models.schemas import Coordinates, Interest, Place
+from . import google_places, providers
 
 _MEAL_CATEGORIES = {"meal"}
 
@@ -46,6 +48,9 @@ class Destination:
         self.center = Coordinates(**meta["center"])
         self.places = places
         self.is_curated: bool = meta.get("curated", False)
+        # "google-places", "curated" or "generated" — surfaced so the UI can
+        # be honest about where the plan's places came from.
+        self.source: str = meta.get("source", "curated")
 
     # -- filtered views ----------------------------------------------------
     @property
@@ -155,26 +160,122 @@ _PLACE_COST: dict[str, float] = {}
 _PLACE_DURATION: dict[str, int] = {}
 
 
-def resolve(destination: str) -> Destination:
-    """Resolve free text like 'tokyo, japan' to a Destination."""
-    query = slugify(destination)
+def _climate_for(lat: float) -> str:
+    """Rough climate band from latitude, for the offline forecast model."""
+    a = abs(lat)
+    if a < 23.5:
+        return "tropical"
+    if a < 35:
+        return "mediterranean"
+    if a < 45:
+        return "humid-subtropical"
+    if a < 60:
+        return "oceanic"
+    return "temperate"
 
-    meta: dict | None = None
-    key = query
+
+def _live_meta(destination: str, catalog: dict) -> dict:
+    """Turn a live Places catalog into the meta a Destination expects."""
+    from ..data.knowledge import COUNTRY_PROFILE
+
+    country = catalog.get("country") or destination.split(",")[-1].strip().title()
+    language, currency = COUNTRY_PROFILE.get(country, ("English", "USD"))
+    centre = catalog["center"]
+
+    live_places: list[Place] = catalog["places"]
+    # Price levels across the catalog stand in for how expensive the city is.
+    levels = [p.price_level for p in live_places] or [2]
+    cost_index = round(0.55 + (sum(levels) / len(levels)) * 0.28, 2)
+
+    return {
+        "name": destination.split(",")[0].strip().title(),
+        "country": country,
+        "language": language,
+        "currency": currency,
+        "timezone": catalog.get("timezone", "UTC"),
+        "utc_offset_hours": catalog.get("utc_offset_hours", 0.0),
+        "center": {"lat": centre.lat, "lng": centre.lng},
+        "climate": _climate_for(centre.lat),
+        "daily_cost_index": cost_index,
+        "blurb": f"{destination.split(',')[0].strip().title()}, planned from live Google Places data.",
+        "curated": False,
+        "source": "google-places",
+    }
+
+
+# Resolving is on the hot path of nearly every request, and the same
+# destination must always produce the same place ids — otherwise a trip saved
+# earlier could not be matched back to its places. So the catalog is cached
+# and never varies by traveller.
+_DESTINATION_CACHE = providers.TTLCache(ttl_seconds=6 * 60 * 60, maxsize=64)
+
+
+def _curated_or_generated(destination: str) -> tuple[str, dict]:
+    query = slugify(destination)
     for cat_key, cat in DESTINATIONS.items():
         if cat_key in query or slugify(cat["name"]) in query:
-            meta, key = {**cat, "curated": True}, cat_key
-            break
+            return cat_key, {**cat, "curated": True, "source": "curated"}
+    return query, {**_generated_catalog(destination), "source": "generated"}
 
-    if meta is None:
-        meta = _generated_catalog(destination)
 
-    places = [_build_place(raw, meta["daily_cost_index"]) for raw in meta["places"]]
-    for raw in meta["places"]:
-        _PLACE_COST[raw["id"]] = raw.get("cost", 0) * meta["daily_cost_index"]
-        _PLACE_DURATION[raw["id"]] = raw.get("duration", 90)
+def _register(place_id: str, cost: float, duration: int) -> None:
+    _PLACE_COST[place_id] = cost
+    _PLACE_DURATION[place_id] = duration
 
-    return Destination(key, meta, places)
+
+def resolve(destination: str) -> Destination:
+    """Resolve free text like 'tokyo, japan' to a Destination.
+
+    Live Google Places first; the curated catalog is the fallback.
+    """
+    query = slugify(destination) or "somewhere"
+
+    cached = _DESTINATION_CACHE.get(f"dest:{query}")
+    if cached is not None:
+        # Re-register planning metadata: the module-level maps are not part of
+        # the cached object and a fresh process may not have them.
+        for place, cost, duration in cached[1]:
+            _register(place.id, cost, duration)
+        return cached[0]
+
+    settings = get_settings()
+    dest: Destination | None = None
+    registry_entries: list[tuple[Place, float, int]] = []
+
+    if settings.google_maps_api_key:
+        catalog = providers.cached_call(
+            _DESTINATION_CACHE,
+            f"catalog:{query}",
+            "places",
+            live=lambda: google_places.fetch_catalog(destination),
+            fallback=lambda: None,
+        )
+        if catalog:
+            meta = _live_meta(destination, catalog)
+            live_places: list[Place] = catalog["places"]
+            for place in live_places:
+                cost = google_places.estimated_cost(
+                    place.category, place.price_level, place.indoor
+                ) * meta["daily_cost_index"]
+                duration = google_places.visit_duration(place.category)
+                registry_entries.append((place, round(cost, 2), duration))
+                _register(place.id, round(cost, 2), duration)
+            dest = Destination(query, meta, live_places)
+
+    if dest is None:
+        key, meta = _curated_or_generated(destination)
+        places = [_build_place(raw, meta["daily_cost_index"]) for raw in meta["places"]]
+        by_id = {p.id: p for p in places}
+        for raw in meta["places"]:
+            cost = raw.get("cost", 0) * meta["daily_cost_index"]
+            duration = raw.get("duration", 90)
+            _register(raw["id"], cost, duration)
+            if raw["id"] in by_id:
+                registry_entries.append((by_id[raw["id"]], cost, duration))
+        dest = Destination(key, meta, places)
+
+    _DESTINATION_CACHE.set(f"dest:{query}", (dest, registry_entries))
+    return dest
 
 
 def base_cost(place: Place) -> float:

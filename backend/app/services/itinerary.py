@@ -173,14 +173,16 @@ def _pick(
     # Never put the same place on the plan twice in one day.
     pool = [p for p in candidates if p.id not in exclude] or list(candidates)
 
-    # Drop anything that would already be shut by the time you got there.
+    # Drop anything that would already be shut by the time you got there. If
+    # that empties the pool the answer is "nothing is open", not "book
+    # somewhere closed" — the caller skips the stop and the day ends earlier.
     if open_at is not None:
-        still_open = [
+        pool = [
             p for p in pool
             if opening_window(p)[1] - max(open_at, opening_window(p)[0]) >= 45
         ]
-        if still_open:
-            pool = still_open
+        if not pool:
+            return None
 
     if slot == Slot.evening:
         preferred = [
@@ -188,8 +190,13 @@ def _pick(
             if p.category == Interest.nightlife
             or {"evening", "sunset", "late"} & set(p.tags)
         ]
-        if preferred:
+        # Restrict to evening venues only when there are enough of them to
+        # choose between. A city with one bar in the catalog would otherwise
+        # get that same bar every single night.
+        if len(preferred) >= 2:
             pool = preferred
+        elif preferred:
+            pool = preferred + [p for p in pool if p not in preferred]
     if not pool:
         return None
     return max(
@@ -261,15 +268,24 @@ def build_day(
     ) -> None:
         nonlocal clock, prev
         act = _activity(place, slot, clock, prev, prefs.travelers, is_meal=is_meal)
-        clock += act.travel_time_minutes
+        arrival = clock + act.travel_time_minutes
         if floor is not None:
-            clock = max(clock, floor)
+            arrival = max(arrival, floor)
         # Never arrive before the doors open.
         opens, closes = opening_window(place)
-        clock = max(clock, opens)
+        arrival = max(arrival, opens)
+
+        # The pick was scored against the clock *before* travel, so the real
+        # arrival can be later than the selection assumed. If that leaves less
+        # than half an hour, going at all is pointless — skip it and let the
+        # day be shorter.
+        if closes - arrival < 30:
+            return
+
+        clock = arrival
         # If it would close mid-visit, trim the stay rather than overrun.
         if clock + act.duration_minutes > closes:
-            act.duration_minutes = max(30, closes - clock)
+            act.duration_minutes = closes - clock
         act.start_time = _fmt(clock)
         act.end_time = _fmt(clock + act.duration_minutes)
         clock += act.duration_minutes + slack
@@ -319,9 +335,11 @@ def build_day(
             place_activity(evening, Slot.evening, floor=17 * 60 + 30)
 
     # --- dinner ----------------------------------------------------------
-    dinner = choose(meals, Slot.evening, floor=19 * 60 + 30)
-    if dinner:
-        place_activity(dinner, Slot.evening, is_meal=True, floor=19 * 60 + 30)
+    # Past this the day has already overrun; a 1am dinner helps nobody.
+    if clock <= 22 * 60:
+        dinner = choose(meals, Slot.evening, floor=19 * 60 + 30)
+        if dinner:
+            place_activity(dinner, Slot.evening, is_meal=True, floor=19 * 60 + 30)
 
     day.title = DAY_THEMES[(day_number - 1) % len(DAY_THEMES)]
     day.summary = _day_summary(day, weather)

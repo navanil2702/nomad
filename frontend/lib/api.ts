@@ -82,6 +82,20 @@ export const api = {
   health: () =>
     request<{ status: string; providers: Record<string, string> }>("/api/health"),
 
+  providers: () =>
+    request<{
+      providers: Record<
+        string,
+        {
+          configured: boolean;
+          mode: string;
+          fallback?: string;
+          model?: string | null;
+          last_error?: string | null;
+        }
+      >;
+    }>("/api/providers"),
+
   // --- trips -------------------------------------------------------------
   listTrips: () => request<TripSummary[]>("/api/trips"),
   getTrip: (id: string) => request<Trip>(`/api/trips/${id}`),

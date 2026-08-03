@@ -16,6 +16,7 @@ import logging
 import httpx
 
 from ..core.config import get_settings
+from . import providers
 
 log = logging.getLogger(__name__)
 
@@ -46,10 +47,17 @@ def _client() -> httpx.Client | None:
     )
 
 
-def complete(user_prompt: str, *, system: str = SYSTEM_PROMPT, max_tokens: int = 300) -> str | None:
+def complete(
+    user_prompt: str,
+    *,
+    system: str = SYSTEM_PROMPT,
+    max_tokens: int = 300,
+    temperature: float = 0.7,
+) -> str | None:
     """Single-turn completion. Returns None when unavailable or on any error."""
     client = _client()
     if client is None:
+        providers.registry.disabled("ai")
         return None
     try:
         with client:
@@ -62,14 +70,51 @@ def complete(user_prompt: str, *, system: str = SYSTEM_PROMPT, max_tokens: int =
                         {"role": "user", "content": user_prompt},
                     ],
                     "max_tokens": max_tokens,
-                    "temperature": 0.7,
+                    "temperature": temperature,
                 },
             )
             r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception as exc:  # network, quota, bad key -- fall back silently
-        log.warning("LLM call failed, using template fallback: %s", exc)
+            text = r.json()["choices"][0]["message"]["content"].strip()
+            providers.registry.success("ai")
+            return text
+    except Exception as exc:  # network, quota, bad key -- fall back to templates
+        providers.registry.failure("ai", f"{type(exc).__name__}: {exc}")
         return None
+
+
+def classify_intent(message: str, allowed: list[str]) -> str | None:
+    """Last-resort intent classification for phrasing the keywords missed.
+
+    This picks a *label*, never an action. The handler for that label still
+    does the deterministic work, so a mislabel produces the wrong help — never
+    an invented itinerary change.
+    """
+    if not get_settings().live_ai:
+        return None
+
+    prompt = json.dumps(
+        {
+            "traveller_said": message,
+            "labels": allowed,
+            "task": (
+                "Return exactly one label from `labels` describing the "
+                "traveller's situation. Return `general` if none fit. "
+                "Reply with the label only — no punctuation, no explanation."
+            ),
+        },
+        ensure_ascii=False,
+    )
+    raw = complete(
+        prompt,
+        system="You are a strict text classifier. You reply with one word.",
+        max_tokens=8,
+        temperature=0,
+    )
+    if not raw:
+        return None
+
+    label = raw.strip().strip(".\"'`").lower()
+    return label if label in allowed else None
 
 
 def narrate_change(

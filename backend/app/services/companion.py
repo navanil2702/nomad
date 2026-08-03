@@ -52,7 +52,17 @@ INTENT_PATTERNS: list[tuple[str, list[str]]] = [
 ]
 
 
+KNOWN_INTENTS = [name for name, _ in INTENT_PATTERNS] + ["general"]
+
+
 def detect_intent(message: str) -> str:
+    """Classify the situation.
+
+    Keywords first — they are free, instant and cover the phrasings people
+    actually use. Only when they find nothing at all does the model get asked,
+    and even then it may only choose a label from the known set. Every action
+    downstream is still taken by deterministic code.
+    """
     text = message.lower().strip()
     scores: dict[str, int] = {}
     for intent, patterns in INTENT_PATTERNS:
@@ -61,7 +71,7 @@ def detect_intent(message: str) -> str:
             scores[intent] = hits
 
     if not scores:
-        return "general"
+        return llm.classify_intent(message, KNOWN_INTENTS) or "general"
 
     # A dietary request is a more specific hunger; delay beats rain if both.
     if "dietary" in scores:
@@ -91,15 +101,27 @@ def _parse(hhmm: str) -> int:
 SLOT_ORDER = {Slot.morning: 0, Slot.afternoon: 1, Slot.evening: 2}
 
 
-def retime_day(day: DayPlan, *, start_minutes: int | None = None, slack: int = 20) -> None:
-    """Recompute travel times, start and end times down the whole day."""
+# A day ends. Anything that would start after this could not happen today.
+END_OF_DAY = 23 * 60 + 30
+
+
+def retime_day(
+    day: DayPlan, *, start_minutes: int | None = None, slack: int = 20
+) -> list[Activity]:
+    """Recompute travel times, start and end times down the whole day.
+
+    Returns the activities that spilled past the end of the day. Times are
+    formatted modulo 24h, so without this an overrun would silently reappear as
+    an early-morning slot and look perfectly reachable to every later check.
+    """
     day.activities.sort(key=lambda a: (SLOT_ORDER[a.slot], _parse(a.start_time)))
     if not day.activities:
         day.recompute()
-        return
+        return []
 
     clock = start_minutes if start_minutes is not None else _parse(day.activities[0].start_time)
     prev: Place | None = None
+    overflow: list[Activity] = []
 
     for act in day.activities:
         if prev is None:
@@ -131,12 +153,16 @@ def retime_day(day: DayPlan, *, start_minutes: int | None = None, slack: int = 2
         if clock + act.duration_minutes > closes:
             act.duration_minutes = max(30, closes - clock)
 
+        if clock > END_OF_DAY:
+            overflow.append(act)
+
         act.start_time = _fmt(clock)
         act.end_time = _fmt(clock + act.duration_minutes)
         clock += act.duration_minutes + slack
         prev = act.place
 
     day.recompute()
+    return overflow
 
 
 def make_activity(
@@ -181,6 +207,23 @@ def replace_activity(
 
 def move_activity(trip: Trip, source: DayPlan, activity: Activity, target: DayPlan, slot: Slot) -> ItineraryChange:
     source.activities = [a for a in source.activities if a.id != activity.id]
+
+    # Moving somewhere the traveller is already going that day would just
+    # produce the same stop twice. Dropping it is the honest outcome.
+    if any(a.place.id == activity.place.id for a in target.activities):
+        retime_day(source)
+        return ItineraryChange(
+            kind="removed",
+            day_number=source.day_number,
+            summary=(
+                f"Dropped {activity.place.name} — it's already on day "
+                f"{target.day_number}"
+            ),
+            before=activity.place.name,
+            before_place_id=activity.place.id,
+            activity_id=activity.id,
+        )
+
     activity.slot = slot
     activity.origin = "companion"
     activity.note = f"Moved from day {source.day_number}"
@@ -243,18 +286,24 @@ def enforce_hours(trip: Trip) -> list[ItineraryChange]:
     dest = places_svc.resolve(trip.preferences.destination)
     fixes: list[ItineraryChange] = []
 
-    def unreachable(act: Activity) -> bool:
+    def unreachable(act: Activity, spilled: set[str]) -> bool:
+        if act.id in spilled:
+            return True
         _, closes = opening_window(act.place)
         return _parse(act.start_time) + 30 > closes
 
     for day in trip.days:
-        # Only touch days that are actually broken. Retiming a healthy day
-        # would quietly shift times the planner had already balanced.
-        if not any(unreachable(a) for a in day.activities):
+        # Retime first so overflow past midnight is detected rather than being
+        # read back as an early-morning start.
+        spilled = {a.id for a in retime_day(day)}
+
+        # Only touch days that are actually broken. Beyond that, retiming a
+        # healthy day would quietly shift times the planner had balanced.
+        if not any(unreachable(a, spilled) for a in day.activities):
             continue
 
         for act in list(day.activities):
-            if not unreachable(act):
+            if not unreachable(act, spilled):
                 continue
 
             here = {a.place.id for a in day.activities}

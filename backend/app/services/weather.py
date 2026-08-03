@@ -15,6 +15,7 @@ import httpx
 
 from ..core.config import get_settings
 from ..models.schemas import Coordinates, WeatherAlert, WeatherDay
+from . import providers
 from .places import Destination
 
 # base (min, max) °C and rain propensity 0-1 per climate band
@@ -114,23 +115,27 @@ def _mock_forecast(dest: Destination, start: date, days: int) -> list[WeatherDay
 def _live_forecast(
     center: Coordinates, start: date, days: int, api_key: str
 ) -> list[WeatherDay] | None:
-    """OpenWeather 5-day/3-hour forecast, aggregated to daily."""
-    try:
-        r = httpx.get(
-            "https://api.openweathermap.org/data/2.5/forecast",
-            params={
-                "lat": center.lat,
-                "lng": center.lng,
-                "lon": center.lng,
-                "appid": api_key,
-                "units": "metric",
-            },
-            timeout=8.0,
-        )
-        r.raise_for_status()
-        blocks = r.json().get("list", [])
-    except Exception:
-        return None
+    """OpenWeather 5-day/3-hour forecast, aggregated to daily.
+
+    Raises on transport or API errors so the caller records the reason rather
+    than silently serving modelled weather that looks identical to real data.
+    """
+    r = httpx.get(
+        "https://api.openweathermap.org/data/2.5/forecast",
+        params={
+            # OpenWeather takes `lon`. An extra `lng` was being sent here and
+            # ignored, which made this look correct while being sloppy.
+            "lat": center.lat,
+            "lon": center.lng,
+            "appid": api_key,
+            "units": "metric",
+        },
+        timeout=10.0,
+    )
+    if r.status_code == 401:
+        raise RuntimeError("OpenWeather rejected the API key")
+    r.raise_for_status()
+    blocks = r.json().get("list", [])
 
     if not blocks:
         return None
@@ -185,19 +190,34 @@ def _live_forecast(
     return out or None
 
 
+# Forecasts move slowly relative to page loads, and every trip view asks for
+# one. Half an hour is far fresher than the data actually changes.
+_FORECAST_CACHE = providers.TTLCache(ttl_seconds=30 * 60, maxsize=128)
+
+
 def forecast(dest: Destination, start: date, days: int) -> list[WeatherDay]:
     settings = get_settings()
-    if settings.openweather_api_key:
-        live = _live_forecast(
-            dest.center, start, days, settings.openweather_api_key
+
+    def live() -> list[WeatherDay] | None:
+        result = _live_forecast(
+            dest.center, start, days, settings.openweather_api_key or ""
         )
-        if live:
-            # OpenWeather free tier only covers 5 days; extend with the model.
-            if len(live) < days:
-                tail = _mock_forecast(dest, start, days)[len(live):]
-                live.extend(tail)
-            return live
-    return _mock_forecast(dest, start, days)
+        if not result:
+            return None
+        # The free tier only reaches 5 days; the model covers the rest so a
+        # longer trip still has a full forecast rather than a truncated one.
+        if len(result) < days:
+            result = result + _mock_forecast(dest, start, days)[len(result):]
+        return result
+
+    return providers.cached_call(
+        _FORECAST_CACHE,
+        f"{dest.key}:{start.isoformat()}:{days}",
+        "weather",
+        live=live,
+        fallback=lambda: _mock_forecast(dest, start, days),
+        enabled=bool(settings.openweather_api_key),
+    )
 
 
 def build_alerts(forecast_days: list[WeatherDay]) -> list[WeatherAlert]:

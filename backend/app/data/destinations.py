@@ -1,13 +1,17 @@
-"""Curated destination catalog.
+"""Curated destination catalog — the fallback when Google Places is unavailable.
 
-This is the offline substitute for Google Places. Each point of interest
-carries the attributes the planner and the companion actually reason about:
-whether it is indoor (rain swaps), how much walking it demands (fatigue
-swaps), what it costs (budget swaps) and which interests it serves.
+With GOOGLE_MAPS_API_KEY set, services/google_places.py builds catalogs live and
+this file is never touched. Without it, or when the API fails, these six cities
+are used instead, and anywhere else gets a generated catalog.
 
-`photo` is intentionally blank -- the frontend renders a deterministic
-gradient from the place id. When GOOGLE_MAPS_API_KEY is set, services/places.py
-fills it with a real Places photo URL.
+Each point of interest carries the attributes the planner and the companion
+actually reason about: whether it is indoor (rain swaps), how much walking it
+demands (fatigue swaps), what it costs (budget swaps) and which interests it
+serves.
+
+`photo` is blank throughout: these places have no photographs, so the frontend
+renders a deterministic gradient from the place id. Live catalogs populate it
+with a proxied Places photo URL.
 """
 
 from __future__ import annotations

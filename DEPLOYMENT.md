@@ -57,11 +57,15 @@ Optional, all of which have working offline fallbacks:
 
 | Name | Effect if set |
 | --- | --- |
-| `OPENAI_API_KEY` | Companion replies are phrased by the model instead of templates. Decisions are unchanged either way. |
-| `OPENAI_MODEL` | Defaults to `gpt-4o-mini`. |
+| `GOOGLE_MAPS_API_KEY` | Destination catalogs come from the live Google Places API instead of the curated data. **Server key** — do not restrict by referrer. Enable *Places API (New)* and *Time Zone API*. |
 | `OPENWEATHER_API_KEY` | Real forecasts instead of the climate model. |
-| `GOOGLE_MAPS_API_KEY` | Real Places photos. |
+| `OPENAI_API_KEY` | Companion replies are phrased by the model, and messages the keywords miss get classified by it. Decisions are unchanged either way. |
+| `OPENAI_MODEL` | Defaults to `gpt-4o-mini`. |
 | `SEED_DEMO_TRIP` | `false` to deploy with an empty database. |
+
+After deploying, `GET /api/providers` tells you which of these are actually
+working — `live`, `ready`, `fallback` (with the reason) or `offline`. Trust it
+over the fact that you pasted a key in.
 
 Deploy. Then check:
 
@@ -94,11 +98,18 @@ Import the same repo again as a second project:
 | Framework Preset | **Next.js** (detected) |
 | Root Directory | `frontend` |
 
-One environment variable:
+Environment variables:
 
 | Name | Value |
 | --- | --- |
 | `API_URL` | `https://nomad-api.vercel.app` — your backend URL, no trailing slash |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Optional. Renders real Google Maps instead of the offline projection. |
+
+> `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` ships to every visitor's browser, so it must
+> be a **different key** from the backend's `GOOGLE_MAPS_API_KEY`: restrict it by
+> HTTP referrer to your domain and enable only *Maps JavaScript API* on it.
+> Reusing the unrestricted server key here would leave your Places quota open to
+> anyone who views source.
 
 Deploy, and open the site.
 
