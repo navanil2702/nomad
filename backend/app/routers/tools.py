@@ -4,12 +4,18 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
+from ..core.config import get_settings
 from ..data.destinations import DESTINATIONS
 from ..data.knowledge import CURRENCY_RATES, CURRENCY_SYMBOLS
 from ..models.schemas import Trip
-from ..services import places as places_svc, trips as trips_svc
+from ..services import (
+    google_places,
+    places as places_svc,
+    providers,
+    trips as trips_svc,
+)
 from ..store import get_store
 
 router = APIRouter(prefix="/api", tags=["tools"])
@@ -35,6 +41,51 @@ def destinations(q: str | None = None) -> list[dict]:
         needle = q.lower()
         rows = [r for r in rows if needle in r["label"].lower()]
     return rows
+
+
+# Autocomplete is billed per request and fires on keystrokes, so the same
+# prefix is only ever asked once an hour.
+_SUGGEST_CACHE = providers.TTLCache(ttl_seconds=60 * 60, maxsize=512)
+
+
+@router.get("/destinations/search")
+def search_destinations(q: str = Query("", max_length=80), limit: int = 6) -> list[dict]:
+    """Type-ahead for the destination field.
+
+    Live Google suggestions when a Places key is configured; otherwise the
+    curated cities, matched loosely so two letters are enough.
+    """
+    query = q.strip()
+    if len(query) < 2:
+        return []
+
+    def curated() -> list[dict]:
+        needle = query.lower()
+        return [
+            {
+                "label": f"{meta['name']}, {meta['country']}",
+                "primary": meta["name"],
+                "secondary": meta["country"],
+                "curated": True,
+            }
+            for meta in DESTINATIONS.values()
+            if needle in meta["name"].lower() or needle in meta["country"].lower()
+        ][:limit]
+
+    suggestions = providers.cached_call(
+        _SUGGEST_CACHE,
+        f"suggest:{query.lower()}:{limit}",
+        "places",
+        live=lambda: google_places.autocomplete_cities(query, limit),
+        fallback=curated,
+        enabled=bool(get_settings().google_maps_api_key),
+    )
+
+    # Curated cities that match go first either way — they have hand-checked
+    # catalogs, which is genuinely a better trip than a generated one.
+    known = {c["label"] for c in curated()}
+    ranked = curated() + [s for s in suggestions if s["label"] not in known]
+    return ranked[:limit]
 
 
 @router.get("/currency/convert")

@@ -337,6 +337,55 @@ def fetch_catalog(
     }
 
 
+AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
+
+
+def autocomplete_cities(query: str, limit: int = 6) -> list[dict] | None:
+    """City suggestions for the destination field. None if unavailable.
+
+    Restricted to place types that are actually somewhere you'd take a trip —
+    without that the field fills up with restaurants and petrol stations that
+    make no sense as a destination.
+    """
+    key = get_settings().google_maps_api_key
+    if not key or len(query.strip()) < 2:
+        return None
+    try:
+        r = httpx.post(
+            AUTOCOMPLETE_URL,
+            headers={"X-Goog-Api-Key": key, "Content-Type": "application/json"},
+            json={
+                "input": query.strip(),
+                "includedPrimaryTypes": [
+                    "locality",
+                    "administrative_area_level_1",
+                    "administrative_area_level_2",
+                    "country",
+                ],
+            },
+            timeout=8.0,
+        )
+        r.raise_for_status()
+        out: list[dict] = []
+        for item in r.json().get("suggestions", [])[:limit]:
+            prediction = item.get("placePrediction") or {}
+            text = (prediction.get("text") or {}).get("text")
+            if not text:
+                continue
+            structured = prediction.get("structuredFormat") or {}
+            out.append(
+                {
+                    "label": text,
+                    "primary": (structured.get("mainText") or {}).get("text", text),
+                    "secondary": (structured.get("secondaryText") or {}).get("text", ""),
+                }
+            )
+        return out or None
+    except Exception as exc:
+        log.warning("autocomplete failed for %r: %s", query, exc)
+        return None
+
+
 def estimated_cost(category: Interest | str, price_level: int, indoor: bool) -> float:
     """Per-person cost of visiting, in USD before the destination cost index."""
     return _estimated_cost(category, price_level, indoor)

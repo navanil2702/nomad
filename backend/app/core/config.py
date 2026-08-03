@@ -36,9 +36,17 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # --- Optional provider credentials -------------------------------------
+    # Groq and OpenAI both speak the OpenAI chat-completions protocol, so the
+    # only differences are the base URL, the model name and which key is set.
+    # Groq wins when both are present.
+    groq_api_key: str | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
+
     # Ask the model for real per-place prices instead of using Google's
     # five price-level buckets. One extra call per catalog build.
     llm_pricing: bool = True
@@ -60,9 +68,30 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    # --- Which LLM, if any -------------------------------------------------
+    @property
+    def llm_provider(self) -> str | None:
+        if self.groq_api_key:
+            return "groq"
+        if self.openai_api_key:
+            return "openai"
+        return None
+
+    @property
+    def llm_api_key(self) -> str | None:
+        return self.groq_api_key or self.openai_api_key
+
+    @property
+    def llm_model(self) -> str:
+        return self.groq_model if self.groq_api_key else self.openai_model
+
+    @property
+    def llm_base_url(self) -> str:
+        return self.groq_base_url if self.groq_api_key else self.openai_base_url
+
     @property
     def live_ai(self) -> bool:
-        return bool(self.openai_api_key)
+        return self.llm_provider is not None
 
     @property
     def live_weather(self) -> bool:

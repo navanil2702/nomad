@@ -32,8 +32,17 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError } from "@/lib/api";
 import type { DestinationOption, Interest, Pace } from "@/lib/types";
+
 import { INTEREST_META, PACE_META } from "@/lib/place-visual";
 import { addDaysIso, cn, daysBetween, formatDate, money, todayIso } from "@/lib/utils";
+
+/** A city suggestion, from Google Places or the curated list. */
+interface DestinationSuggestion {
+  label: string;
+  primary: string;
+  secondary: string;
+  curated?: boolean;
+}
 
 const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "INR", "AUD", "CAD", "SGD"];
 
@@ -63,11 +72,87 @@ export function TripForm({ destinations }: { destinations: DestinationOption[] }
   const nights = Math.max(daysBetween(startDate, endDate) - 1, 1);
   const perDay = budget / Math.max(daysBetween(startDate, endDate), 1);
 
-  const suggestions = React.useMemo(() => {
-    const q = destination.trim().toLowerCase();
-    if (!q) return destinations.slice(0, 6);
-    return destinations.filter((d) => d.label.toLowerCase().includes(q)).slice(0, 5);
-  }, [destination, destinations]);
+  // --- destination type-ahead ---------------------------------------------
+  const [matches, setMatches] = React.useState<DestinationSuggestion[]>([]);
+  const [open, setOpen] = React.useState(false);
+  const [highlight, setHighlight] = React.useState(-1);
+  const [searching, setSearching] = React.useState(false);
+  // Set when a suggestion is chosen, so selecting one doesn't immediately
+  // trigger a fresh search for the text it just filled in.
+  const justPicked = React.useRef(false);
+  const boxRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const q = destination.trim();
+    if (justPicked.current) {
+      justPicked.current = false;
+      return;
+    }
+    if (q.length < 2) {
+      setMatches([]);
+      setOpen(false);
+      return;
+    }
+
+    // Autocomplete is billed per request, so wait for a pause in typing.
+    let cancelled = false;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      api
+        .searchDestinations(q)
+        .then((results) => {
+          if (cancelled) return;
+          setMatches(results);
+          setHighlight(-1);
+          setOpen(results.length > 0);
+        })
+        .catch(() => !cancelled && setMatches([]))
+        .finally(() => !cancelled && setSearching(false));
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setSearching(false);
+    };
+  }, [destination]);
+
+  // Close on an outside click.
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  function pick(suggestion: DestinationSuggestion) {
+    justPicked.current = true;
+    setDestination(suggestion.label);
+    const curated = destinations.find((d) => d.label === suggestion.label);
+    if (curated) setCurrency(curated.currency);
+    setOpen(false);
+    setHighlight(-1);
+  }
+
+  function onDestinationKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open || matches.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight((h) => (h + 1) % matches.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight((h) => (h - 1 + matches.length) % matches.length);
+    } else if (e.key === "Enter" && highlight >= 0) {
+      e.preventDefault();
+      pick(matches[highlight]);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  }
 
   const canAdvance = React.useMemo(() => {
     if (step === 0) return destination.trim().length >= 2 && endDate >= startDate;
@@ -169,34 +254,87 @@ export function TripForm({ destinations }: { destinations: DestinationOption[] }
 
               <div className="space-y-2">
                 <Label htmlFor="destination">Destination</Label>
-                <div className="relative">
+                <div ref={boxRef} className="relative">
                   <MapPin className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="destination"
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
-                    placeholder="Tokyo, Japan"
-                    className="pl-10"
+                    onKeyDown={onDestinationKeyDown}
+                    onFocus={() => matches.length > 0 && setOpen(true)}
+                    placeholder="Start typing a city…"
+                    className="pl-10 pr-10"
                     autoComplete="off"
+                    role="combobox"
+                    aria-expanded={open}
+                    aria-autocomplete="list"
                   />
-                </div>
-                {suggestions.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {suggestions.map((s) => (
-                      <button
-                        key={s.key}
-                        type="button"
-                        onClick={() => {
-                          setDestination(s.label);
-                          setCurrency(s.currency);
-                        }}
-                        className="rounded-full border border-border px-3 py-1.5 text-xs transition-colors hover:border-primary/50 hover:bg-primary/5"
+                  {searching && (
+                    <Loader2 className="absolute right-3.5 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                  )}
+
+                  <AnimatePresence>
+                    {open && matches.length > 0 && (
+                      <motion.ul
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.12 }}
+                        role="listbox"
+                        className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-xl"
                       >
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                        {matches.map((s, i) => (
+                          <li key={s.label} role="option" aria-selected={i === highlight}>
+                            <button
+                              type="button"
+                              onMouseEnter={() => setHighlight(i)}
+                              onClick={() => pick(s)}
+                              className={cn(
+                                "flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors",
+                                i === highlight ? "bg-secondary" : "hover:bg-secondary/60",
+                              )}
+                            >
+                              <MapPin className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium">
+                                  {s.primary}
+                                </span>
+                                {s.secondary && (
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {s.secondary}
+                                  </span>
+                                )}
+                              </span>
+                              {s.curated && (
+                                <Badge variant="default" className="shrink-0">
+                                  <Sparkles /> Curated
+                                </Badge>
+                              )}
+                            </button>
+                          </li>
+                        ))}
+                      </motion.ul>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {destinations.slice(0, 6).map((s) => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => {
+                        justPicked.current = true;
+                        setDestination(s.label);
+                        setCurrency(s.currency);
+                        setOpen(false);
+                      }}
+                      className="rounded-full border border-border px-3 py-1.5 text-xs transition-colors hover:border-primary/50 hover:bg-primary/5"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">

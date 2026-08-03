@@ -54,7 +54,7 @@ def provider_status() -> dict:
     """
     settings = get_settings()
     configured = {
-        "ai": bool(settings.openai_api_key),
+        "ai": settings.live_ai,
         "weather": bool(settings.openweather_api_key),
         "places": bool(settings.google_maps_api_key),
         "database": bool(settings.supabase_url),
@@ -86,7 +86,11 @@ def provider_status() -> dict:
             "ai": entry(
                 "ai",
                 "template phrasing; itinerary decisions are unaffected",
-                model=settings.openai_model if configured["ai"] else None,
+                model=(
+                    f"{settings.llm_provider}:{settings.llm_model}"
+                    if configured["ai"]
+                    else None
+                ),
             ),
             "weather": entry("weather", "seeded climate model"),
             "places": entry(

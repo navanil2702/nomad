@@ -59,8 +59,11 @@ Optional, all of which have working offline fallbacks:
 | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | Destination catalogs come from the live Google Places API instead of the curated data. **Server key** — do not restrict by referrer. Enable *Places API (New)* and *Time Zone API*. |
 | `OPENWEATHER_API_KEY` | Real forecasts instead of the climate model. |
-| `OPENAI_API_KEY` | Companion replies are phrased by the model, and messages the keywords miss get classified by it. Decisions are unchanged either way. |
+| `GROQ_API_KEY` | Phrasing, intent classification and per-place price estimates, via Groq. Takes precedence over OpenAI. |
+| `GROQ_MODEL` | Defaults to `llama-3.3-70b-versatile`. |
+| `OPENAI_API_KEY` | The same, via OpenAI, if you'd rather. |
 | `OPENAI_MODEL` | Defaults to `gpt-4o-mini`. |
+| `LLM_PRICING` | `false` to keep price bands instead of asking the model for real prices. |
 | `SEED_DEMO_TRIP` | `false` to deploy with an empty database. |
 
 After deploying, `GET /api/providers` tells you which of these are actually

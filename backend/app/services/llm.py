@@ -34,16 +34,17 @@ Rules:
 
 
 def _client() -> httpx.Client | None:
+    """A client for whichever OpenAI-compatible provider is configured."""
     s = get_settings()
-    if not s.openai_api_key:
+    if not s.llm_api_key:
         return None
     return httpx.Client(
-        base_url=s.openai_base_url,
+        base_url=s.llm_base_url,
         headers={
-            "Authorization": f"Bearer {s.openai_api_key}",
+            "Authorization": f"Bearer {s.llm_api_key}",
             "Content-Type": "application/json",
         },
-        timeout=25.0,
+        timeout=30.0,
     )
 
 
@@ -64,7 +65,7 @@ def complete(
             r = client.post(
                 "/chat/completions",
                 json={
-                    "model": get_settings().openai_model,
+                    "model": get_settings().llm_model,
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_prompt},
@@ -163,7 +164,7 @@ def complete_json(
             r = client.post(
                 "/chat/completions",
                 json={
-                    "model": get_settings().openai_model,
+                    "model": get_settings().llm_model,
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_prompt},

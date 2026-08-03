@@ -190,7 +190,7 @@ default.
 | Places | Google Places API (New) — real venues, hours, ratings, price levels, photos | Curated catalog for six cities; generated catalog anywhere else |
 | Maps | Google Maps JS API — real tiles, markers, day routes | Coordinate projection over a styled canvas; pins still deep-link out |
 | Weather | OpenWeather 5-day forecast | Seeded climate model, stable per trip |
-| AI | OpenAI (`OPENAI_MODEL`, default `gpt-4o-mini`) for phrasing, for classifying messages the keywords miss, and for per-place price estimates | Template phrasing; keyword classification; price-level bands. **Itinerary decisions are identical either way** |
+| AI | **Groq** (`GROQ_MODEL`, default `llama-3.3-70b-versatile`) or **OpenAI** (`OPENAI_MODEL`, default `gpt-4o-mini`) — for phrasing, for classifying messages the keywords miss, and for per-place price estimates | Template phrasing; keyword classification; price-level bands. **Itinerary decisions are identical either way** |
 | Database | Supabase Postgres | JSON files under `backend/.data/` |
 | Auth | Google Identity Services | Local demo profile |
 
@@ -207,8 +207,10 @@ rather than one per page load.
 
 ### Keys
 
-Set on the backend: `GOOGLE_MAPS_API_KEY`, `OPENWEATHER_API_KEY`,
-`OPENAI_API_KEY`. Set on the frontend: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` for the
+Set on the backend: `GOOGLE_MAPS_API_KEY`, `OPENWEATHER_API_KEY`, and one of
+`GROQ_API_KEY` / `OPENAI_API_KEY` — both speak the OpenAI chat-completions
+protocol, so only the base URL and model name differ, and Groq wins if both are
+set. Set on the frontend: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` for the
 map itself — a **separate, browser-restricted key**, because that one is public.
 
 Places photos are proxied through `/api/places/photo`, which resolves them to

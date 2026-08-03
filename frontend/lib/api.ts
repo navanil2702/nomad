@@ -175,6 +175,11 @@ export const api = {
     request<Retrospective>(`/api/trips/${id}/journal/retrospective`),
 
   // --- tools -------------------------------------------------------------
+  searchDestinations: (q: string, limit = 6) =>
+    request<
+      { label: string; primary: string; secondary: string; curated?: boolean }[]
+    >(`/api/destinations/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+
   destinations: (q?: string) =>
     request<DestinationOption[]>(
       `/api/destinations${q ? `?q=${encodeURIComponent(q)}` : ""}`,
