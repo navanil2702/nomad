@@ -104,11 +104,17 @@ def estimate_place_costs(
     if not settings.live_ai or not settings.llm_pricing or not places:
         return None
 
+    # Places are numbered rather than keyed by their real ids. Google's ids look
+    # like "ChIJN1t_tDeuEmsRUsoyG83frY4", and a model asked to echo thirty of
+    # those will eventually get one wrong — at which point that estimate is
+    # silently dropped. A small integer is much harder to mistranscribe.
+    indexed = [{"i": i, **place} for i, place in enumerate(places)]
+
     prompt = json.dumps(
         {
             "destination": destination,
             "country": country,
-            "places": places,
+            "places": indexed,
             "task": (
                 "For each place give the realistic cost for ONE person in USD. "
                 "For attractions that is standard adult admission — use 0 for "
@@ -117,8 +123,9 @@ def estimate_place_costs(
                 "cafes and bars it is a typical spend per head for one visit, "
                 "including a drink. Use local prices for this city, not "
                 "international averages. Return JSON shaped exactly as "
-                '{"costs": {"<id>": <number>, ...}} with an entry for every '
-                "id given, and no commentary."
+                '{"costs": {"0": <number>, "1": <number>, ...}} keyed by the '
+                '"i" value of each place, with an entry for every place, and '
+                "no commentary."
             ),
         },
         ensure_ascii=False,
@@ -139,15 +146,31 @@ def estimate_place_costs(
     if not isinstance(costs, dict):
         return None
 
+    # Map the indices back onto the real place ids. Accept an id key too, in
+    # case the model decides to answer that way regardless.
+    by_index = {str(i): place.get("id") for i, place in enumerate(places)}
+    known_ids = {str(place.get("id")) for place in places}
+
     cleaned: dict[str, float] = {}
-    for place_id, value in costs.items():
+    for key, value in costs.items():
+        place_id = by_index.get(str(key).strip())
+        if place_id is None and str(key) in known_ids:
+            place_id = str(key)
+        if place_id is None:
+            continue
         try:
             amount = float(value)
         except (TypeError, ValueError):
             continue
         if amount < 0 or amount > 500:
             continue
-        cleaned[str(place_id)] = round(amount, 2)
+        cleaned[place_id] = round(amount, 2)
+
+    if not cleaned:
+        log.warning(
+            "price estimates unusable: %d returned, none matched a place",
+            len(costs),
+        )
     return cleaned or None
 
 

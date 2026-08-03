@@ -76,6 +76,27 @@ def provider_check() -> dict:
             "reply": reply,
             "error": None if reply is not None else (state.last_error or before),
         }
+        # Exercise the actual pricing path, not just "can we reach the model".
+        # A reply that arrives but whose keys do not match any place is the
+        # failure mode that silently leaves every trip on price bands.
+        sample = [
+            {"id": "ChIJtestMuseum00001", "name": "City Palace", "kind": "history",
+             "price_level": 2, "free_hint": False},
+            {"id": "ChIJtestTemple00002", "name": "Old Temple", "kind": "history",
+             "price_level": 0, "free_hint": True},
+            {"id": "ChIJtestDhaba00003", "name": "Corner Dhaba", "kind": "meal",
+             "price_level": 1, "free_hint": False},
+        ]
+        priced = llm.estimate_place_costs(
+            destination="Jaipur", country="India", places=sample
+        )
+        results["ai_pricing"] = {
+            "ok": bool(priced) and len(priced) >= 2,
+            "matched": len(priced or {}),
+            "of": len(sample),
+            "costs_usd": priced,
+            "error": None if priced else providers.registry.state("ai").last_error,
+        }
     else:
         results["ai"] = {"ok": False, "error": "no GROQ_API_KEY or OPENAI_API_KEY set"}
 
