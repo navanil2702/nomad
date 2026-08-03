@@ -269,6 +269,36 @@ class TripPreferences(BaseModel):
     pace: Pace = Pace.balanced
 
 
+class DestinationCatalog(BaseModel):
+    """The resolved place catalog a trip was planned from, stored with it.
+
+    Two reasons this is persisted rather than re-resolved on demand:
+
+    - Cost and latency. Building a live catalog is a dozen Places queries.
+      Resolving per request would mean paying for them on every cold start.
+    - Correctness. A live provider can return different results tomorrow. If
+      the catalog moved under a saved trip, undoing a companion change could
+      fail to find the place it needs to put back.
+    """
+
+    key: str
+    name: str
+    country: str
+    language: str
+    currency: str
+    timezone: str
+    utc_offset_hours: float
+    climate: str
+    daily_cost_index: float
+    blurb: str = ""
+    source: str = "curated"
+    center: Coordinates
+    places: list[Place] = Field(default_factory=list)
+    # Planning metadata that is derived, not part of the Place itself.
+    costs: dict[str, float] = Field(default_factory=dict)
+    durations: dict[str, int] = Field(default_factory=dict)
+
+
 class TripCreate(TripPreferences):
     pass
 
@@ -279,6 +309,9 @@ class Trip(BaseModel):
     title: str = ""
     preferences: TripPreferences
     center: Coordinates
+    # The catalog this trip was planned from. Absent on trips saved before
+    # catalogs were persisted, which fall back to resolving by name.
+    catalog: DestinationCatalog | None = None
     timezone: str = "UTC"
     country: str = ""
     language: str = "English"

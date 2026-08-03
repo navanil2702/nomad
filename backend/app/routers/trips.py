@@ -91,7 +91,7 @@ def refresh_weather(trip_id: str) -> Trip:
     from ..services import proactive, weather as weather_svc
 
     trip = _load(trip_id)
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     trip.weather = weather_svc.forecast(
         dest, trip.preferences.start_date, len(trip.days)
     )
@@ -118,7 +118,7 @@ def toggle_packing(trip_id: str, item_id: str, payload: PackingToggle) -> Trip:
 @router.post("/{trip_id}/packing/regenerate", response_model=Trip)
 def regenerate_packing(trip_id: str) -> Trip:
     trip = _load(trip_id)
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     packed = {i.label for i in trip.packing_list if i.packed}
     trip.packing_list = packing_svc.generate(
         trip.preferences, dest, trip.days, trip.weather

@@ -229,7 +229,7 @@ def _scan_closing(trip: Trip, today: date, existing: set[str]) -> list[Proactive
 def scan(trip: Trip, today: date | None = None) -> list[ProactiveAlert]:
     """Run every scanner, apply what should be applied, return new alerts."""
     today = today or date.today()
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
 
     # Alerts carry the key they were raised under, so this never has to
     # reconstruct it and get the format subtly wrong.
@@ -255,7 +255,7 @@ def apply(trip: Trip, alert: ProactiveAlert) -> ProactiveAlert:
     if alert.applied:
         return alert
 
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     today = date.today()
     day = companion.active_day(trip, alert.day_number, today)
 

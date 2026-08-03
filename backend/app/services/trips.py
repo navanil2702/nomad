@@ -30,6 +30,10 @@ def create_trip(payload: TripCreate) -> Trip:
         title=itinerary.trip_title(payload, dest),
         preferences=payload,
         center=dest.center,
+        # Freeze the catalog onto the trip. Every later request reads it from
+        # here instead of resolving again, which keeps chat and alert scans off
+        # the paid Places API entirely.
+        catalog=places_svc.to_catalog(dest),
         timezone=dest.timezone,
         country=dest.country,
         language=dest.language,
@@ -101,7 +105,7 @@ def local_info(trip: Trip) -> LocalInfo:
         PHRASES,
     )
 
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     meta = COUNTRY_META.get(dest.country, DEFAULT_COUNTRY_META)
 
     return LocalInfo(
@@ -148,7 +152,7 @@ def map_places(trip: Trip) -> list[dict]:
 
 
 def nearby(trip: Trip, place_id: str, limit: int = 5) -> list[dict]:
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     anchor = dest.by_id(place_id)
     if not anchor:
         return []

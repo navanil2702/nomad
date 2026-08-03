@@ -14,7 +14,7 @@ import unicodedata
 from ..core.config import get_settings
 from ..data.destinations import DESTINATIONS, GENERIC_TEMPLATE
 from ..data.knowledge import CURRENCY_RATES
-from ..models.schemas import Coordinates, Interest, Place
+from ..models.schemas import Coordinates, DestinationCatalog, Interest, Place
 from . import google_places, providers
 
 _MEAL_CATEGORIES = {"meal"}
@@ -223,10 +223,70 @@ def _register(place_id: str, cost: float, duration: int) -> None:
     _PLACE_DURATION[place_id] = duration
 
 
-def resolve(destination: str) -> Destination:
+def to_catalog(dest: Destination) -> DestinationCatalog:
+    """Freeze a resolved Destination so it can be stored with a trip."""
+    return DestinationCatalog(
+        key=dest.key,
+        name=dest.name,
+        country=dest.country,
+        language=dest.language,
+        currency=dest.currency,
+        timezone=dest.timezone,
+        utc_offset_hours=dest.utc_offset_hours,
+        climate=dest.climate,
+        daily_cost_index=dest.cost_index,
+        blurb=dest.blurb,
+        source=dest.source,
+        center=dest.center,
+        places=dest.places,
+        costs={p.id: base_cost(p) for p in dest.places},
+        durations={p.id: base_duration(p) for p in dest.places},
+    )
+
+
+def from_catalog(catalog: DestinationCatalog) -> Destination:
+    """Rebuild a Destination from stored data. Never touches the network."""
+    for place_id, cost in catalog.costs.items():
+        _PLACE_COST[place_id] = cost
+    for place_id, duration in catalog.durations.items():
+        _PLACE_DURATION[place_id] = duration
+
+    meta = {
+        "name": catalog.name,
+        "country": catalog.country,
+        "language": catalog.language,
+        "currency": catalog.currency,
+        "timezone": catalog.timezone,
+        "utc_offset_hours": catalog.utc_offset_hours,
+        "climate": catalog.climate,
+        "daily_cost_index": catalog.daily_cost_index,
+        "blurb": catalog.blurb,
+        "source": catalog.source,
+        "curated": catalog.source == "curated",
+        "center": {"lat": catalog.center.lat, "lng": catalog.center.lng},
+    }
+    return Destination(catalog.key, meta, catalog.places)
+
+
+def for_trip(trip) -> Destination:
+    """The Destination a trip was planned against.
+
+    This is what request handlers should use. It reads the catalog saved on
+    the trip, so a chat message or an alert scan costs nothing upstream no
+    matter how many serverless instances handle it.
+    """
+    if getattr(trip, "catalog", None):
+        return from_catalog(trip.catalog)
+    # Trips created before catalogs were stored.
+    return resolve(trip.preferences.destination)
+
+
+def resolve(destination: str, *, allow_live: bool = True) -> Destination:
     """Resolve free text like 'tokyo, japan' to a Destination.
 
-    Live Google Places first; the curated catalog is the fallback.
+    Live Google Places first; the curated catalog is the fallback. Callers
+    that only need cheap metadata should pass allow_live=False rather than
+    trigger a paid lookup.
     """
     query = slugify(destination) or "somewhere"
 
@@ -242,7 +302,7 @@ def resolve(destination: str) -> Destination:
     dest: Destination | None = None
     registry_entries: list[tuple[Place, float, int]] = []
 
-    if settings.google_maps_api_key:
+    if allow_live and settings.google_maps_api_key:
         catalog = providers.cached_call(
             _DESTINATION_CACHE,
             f"catalog:{query}",

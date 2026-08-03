@@ -63,7 +63,7 @@ def rates() -> dict:
 
 @router.get("/timezone")
 def timezone_convert(destination: str, home_offset_hours: float = 0.0) -> dict:
-    dest = places_svc.resolve(destination)
+    dest = places_svc.resolve(destination, allow_live=False)
     now_utc = datetime.now(timezone.utc)
     local = now_utc + timedelta(hours=dest.utc_offset_hours)
     home = now_utc + timedelta(hours=home_offset_hours)

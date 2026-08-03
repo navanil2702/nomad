@@ -283,7 +283,7 @@ def enforce_hours(trip: Trip) -> list[ItineraryChange]:
     """
     from .itinerary import opening_window
 
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     fixes: list[ItineraryChange] = []
 
     def unreachable(act: Activity, spilled: set[str]) -> bool:
@@ -834,7 +834,7 @@ def respond(
     trip: Trip, message: str, day_number: int | None = None
 ) -> tuple[str, list[ItineraryChange], str]:
     """Returns (reply, changes, intent)."""
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     day = active_day(trip, day_number)
     intent = detect_intent(message)
 
@@ -912,7 +912,7 @@ def _rebuild_budget(trip: Trip, dest: Destination):
 
 def revert(trip: Trip, changes: list[ItineraryChange]) -> None:
     """Undo an auto-applied set of changes. Handles replace and move."""
-    dest = places_svc.resolve(trip.preferences.destination)
+    dest = places_svc.for_trip(trip)
     for change in reversed(changes):
         if change.kind in ("replaced", "downgraded") and change.before_place_id:
             original = dest.by_id(change.before_place_id)

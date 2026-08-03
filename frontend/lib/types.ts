@@ -202,12 +202,33 @@ export interface TripPreferences {
   pace: Pace;
 }
 
+/** The frozen place catalog a trip was planned from. */
+export interface DestinationCatalog {
+  key: string;
+  name: string;
+  country: string;
+  language: string;
+  currency: string;
+  timezone: string;
+  utc_offset_hours: number;
+  climate: string;
+  daily_cost_index: number;
+  blurb: string;
+  /** "google-places" | "curated" | "generated" */
+  source: string;
+  center: Coordinates;
+  places: Place[];
+  costs: Record<string, number>;
+  durations: Record<string, number>;
+}
+
 export interface Trip {
   id: string;
   owner: string;
   title: string;
   preferences: TripPreferences;
   center: Coordinates;
+  catalog: DestinationCatalog | null;
   timezone: string;
   country: string;
   language: string;

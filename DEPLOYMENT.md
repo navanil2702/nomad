@@ -67,6 +67,18 @@ After deploying, `GET /api/providers` tells you which of these are actually
 working — `live`, `ready`, `fallback` (with the reason) or `offline`. Trust it
 over the fact that you pasted a key in.
 
+### What the Places key costs
+
+Building a live catalog is ~11 Text Search queries, billed per request. That
+happens **once per trip created**, not per page view: the resolved catalog is
+frozen onto the trip and every later chat message, alert scan and map render
+reads it from storage. Verified at zero upstream calls after creation, even
+across cold instances.
+
+So the bill scales with trips created, not traffic. Set a quota cap in the
+Google Cloud console anyway — the free tier is generous but it is not a hard
+stop by default.
+
 Deploy. Then check:
 
 ```bash
