@@ -134,9 +134,11 @@ there. If it survives a reload, persistence is working.
 **Cold starts.** The free tier scales to zero. The first request after an idle
 period takes a few seconds while the Python function boots.
 
-**Concurrent seeding.** Two simultaneous cold starts on an empty database can
-each decide to seed, producing two demo trips. Harmless — delete one, or set
-`SEED_DEMO_TRIP=false` and seed once by hand.
+**Concurrent seeding.** Two simultaneous cold starts can both find an empty
+database and both decide to seed. The demo trip therefore has a fixed id
+(`trip_demo_tokyo`), so they upsert the same row rather than creating
+duplicates. Set `SEED_DEMO_TRIP=false` to deploy with an empty database
+instead.
 
 **`maxDuration`.** Set to 30s in `backend/vercel.json`. Hobby plans cap at 60s.
 Only relevant if you enable `OPENAI_API_KEY` and the model is slow.

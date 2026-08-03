@@ -2,12 +2,19 @@
 
 **Planning is easy. Travel changes. Your itinerary should adapt.**
 
+### → [nomad-lyart.vercel.app](https://nomad-lyart.vercel.app)
+
 A real-time travel companion. It builds a day-by-day plan around your budget,
 pace and the actual forecast — then keeps watching, and rewrites the plan
 before the problem reaches you.
 
 The whole product runs with **zero API keys and zero infrastructure**. Every
 external provider is optional; each one has an offline engine behind it.
+
+> The live demo is on Vercel's free tier, so the first request after an idle
+> spell wakes the API and takes a few seconds. It runs on the offline engines —
+> no OpenAI, OpenWeather or Maps key — which is the point: everything you see
+> is the planner, not a model.
 
 ---
 

@@ -22,6 +22,9 @@ from .store import get_store
 
 log = logging.getLogger(__name__)
 
+DEMO_TRIP_ID = "trip_demo_tokyo"
+DEMO_SHARE_TOKEN = "demotokyo"
+
 DEMO_EXPENSES: list[tuple[int, str, float, ExpenseCategory]] = [
     (0, "Ryokan, 2 nights", 268.00, ExpenseCategory.hotels),
     (0, "Suica cards + top up", 42.00, ExpenseCategory.transport),
@@ -71,6 +74,11 @@ def seed_if_empty() -> bool:
             pace=Pace.balanced,
         )
     )
+    # Fixed identity, not a generated one. Two serverless cold starts can both
+    # find an empty store and both decide to seed; with a deterministic id they
+    # upsert the same row instead of racing to create N copies of the demo.
+    trip.id = DEMO_TRIP_ID
+    trip.share_token = DEMO_SHARE_TOKEN
     trip.owner = "demo-user"
 
     for offset, label, amount, category in DEMO_EXPENSES:
