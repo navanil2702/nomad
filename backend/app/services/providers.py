@@ -12,6 +12,7 @@ That is only trustworthy if two things are true:
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -93,6 +94,32 @@ class _Registry:
 registry = _Registry()
 
 
+def describe(exc: Exception) -> str:
+    """A failure message you can actually act on.
+
+    `str(HTTPStatusError)` is a generic "Client error '400 Bad Request'" plus a
+    link to MDN, which tells you nothing about *why* the provider rejected the
+    call. The response body almost always does, so it goes in.
+    """
+    detail = f"{type(exc).__name__}: {exc}"
+    response = getattr(exc, "response", None)
+    if response is None:
+        return detail
+    try:
+        body = response.json()
+        message = (
+            body.get("error", {}).get("message")
+            if isinstance(body.get("error"), dict)
+            else body.get("error") or body.get("message")
+        )
+        if message:
+            return f"HTTP {response.status_code}: {message}"
+        return f"HTTP {response.status_code}: {json.dumps(body)[:280]}"
+    except Exception:
+        text = (getattr(response, "text", "") or "").strip()
+        return f"HTTP {response.status_code}: {text[:280]}" if text else detail
+
+
 # --------------------------------------------------------------------------
 # TTL cache
 # --------------------------------------------------------------------------
@@ -169,7 +196,7 @@ def cached_call(
     try:
         value = live()
     except Exception as exc:
-        registry.failure(provider, f"{type(exc).__name__}: {exc}")
+        registry.failure(provider, describe(exc))
         cache.set(cache_key, _MISS, ttl=failure_ttl)
         return fallback()
 

@@ -79,7 +79,7 @@ def complete(
             providers.registry.success("ai")
             return text
     except Exception as exc:  # network, quota, bad key -- fall back to templates
-        providers.registry.failure("ai", f"{type(exc).__name__}: {exc}")
+        providers.registry.failure("ai", providers.describe(exc))
         return None
 
 
@@ -151,35 +151,87 @@ def estimate_place_costs(
     return cleaned or None
 
 
+def _extract_json(text: str) -> dict | None:
+    """Pull a JSON object out of a reply that may be wrapped in prose or fences."""
+    text = text.strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        text = (parts[1] if len(parts) > 1 else text).removeprefix("json").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        return json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+
+
 def complete_json(
     user_prompt: str, *, system: str, max_tokens: int = 800
 ) -> dict | None:
-    """Completion constrained to a JSON object. None on any failure."""
+    """Completion constrained to a JSON object. None on any failure.
+
+    Native JSON mode is tried first, then the same call without it. Support for
+    `response_format` varies by provider *and* by model — one that rejects it
+    answers 400 — and losing price estimates over a single parameter is a worse
+    outcome than parsing the object out of ordinary prose.
+    """
     client = _client()
     if client is None:
         providers.registry.disabled("ai")
         return None
+
+    def payload(json_mode: bool) -> dict:
+        body: dict = {
+            "model": get_settings().llm_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0,
+        }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        return body
+
+    last_error: Exception | None = None
     try:
         with client:
-            r = client.post(
-                "/chat/completions",
-                json={
-                    "model": get_settings().llm_model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "max_tokens": max_tokens,
-                    "temperature": 0,
-                    "response_format": {"type": "json_object"},
-                },
-            )
-            r.raise_for_status()
-            providers.registry.success("ai")
-            return json.loads(r.json()["choices"][0]["message"]["content"])
+            for json_mode in (True, False):
+                try:
+                    r = client.post("/chat/completions", json=payload(json_mode))
+                    r.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    last_error = exc
+                    # Only a rejected *request* is worth retrying differently.
+                    # Auth, rate limits and server faults will not improve.
+                    if exc.response.status_code != 400 or not json_mode:
+                        break
+                    log.info("JSON mode rejected, retrying without it")
+                    continue
+                except Exception as exc:
+                    last_error = exc
+                    break
+
+                parsed = _extract_json(r.json()["choices"][0]["message"]["content"])
+                if parsed is not None:
+                    providers.registry.success("ai")
+                    return parsed
+                last_error = ValueError("reply was not valid JSON")
+                break
     except Exception as exc:
-        providers.registry.failure("ai", f"{type(exc).__name__}: {exc}")
-        return None
+        last_error = exc
+
+    providers.registry.failure(
+        "ai",
+        providers.describe(last_error) if last_error else "no usable JSON reply",
+    )
+    return None
 
 
 def classify_intent(message: str, allowed: list[str]) -> str | None:
