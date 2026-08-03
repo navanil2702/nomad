@@ -166,14 +166,14 @@ def retime_day(
 
 
 def make_activity(
-    place: Place, slot: Slot, travelers: int, *, is_meal: bool = False, origin: str = "companion"
+    place: Place, slot: Slot, prefs: TripPreferences, *, is_meal: bool = False, origin: str = "companion"
 ) -> Activity:
     return Activity(
         slot=slot,
         title=place.name,
         place=place,
         duration_minutes=places_svc.base_duration(place),
-        estimated_cost=round(places_svc.base_cost(place) * travelers, 2),
+        estimated_cost=places_svc.activity_cost(place, prefs),
         maps_url=places_svc.maps_url(place),
         local_tip=place.description,
         is_meal=is_meal,
@@ -182,14 +182,14 @@ def make_activity(
 
 
 def replace_activity(
-    day: DayPlan, activity: Activity, new_place: Place, travelers: int, *, origin: str = "companion"
+    day: DayPlan, activity: Activity, new_place: Place, prefs: TripPreferences, *, origin: str = "companion"
 ) -> ItineraryChange:
     old_name = activity.place.name
     old_id = activity.place.id
     activity.place = new_place
     activity.title = new_place.name
     activity.duration_minutes = places_svc.base_duration(new_place)
-    activity.estimated_cost = round(places_svc.base_cost(new_place) * travelers, 2)
+    activity.estimated_cost = places_svc.activity_cost(new_place, prefs)
     activity.local_tip = new_place.description
     activity.origin = origin  # type: ignore[assignment]
     activity.note = f"Swapped in for {old_name}"
@@ -315,7 +315,7 @@ def enforce_hours(trip: Trip) -> list[ItineraryChange]:
                 )
                 if alt and alt.id != act.place.id:
                     fixes.append(
-                        replace_activity(day, act, alt, trip.preferences.travelers)
+                        replace_activity(day, act, alt, trip.preferences)
                     )
                     continue
 
@@ -433,7 +433,7 @@ def handle_rain(trip: Trip, dest: Destination, day: DayPlan) -> tuple[list[Itine
         if not replacement or not open_during(replacement, act.start_time):
             continue
         used.add(replacement.id)
-        changes.append(replace_activity(day, act, replacement, trip.preferences.travelers))
+        changes.append(replace_activity(day, act, replacement, trip.preferences))
 
     # Anything outdoors that survived gets pushed to the driest later day.
     leftover = [a for a in day.activities if not a.place.indoor and not a.is_meal]
@@ -484,7 +484,7 @@ def handle_tired(trip: Trip, dest: Destination, day: DayPlan) -> tuple[list[Itin
         if later:
             changes.append(move_activity(trip, day, target, later, target.slot))
         elif easy:
-            changes.append(replace_activity(day, target, easy, trip.preferences.travelers))
+            changes.append(replace_activity(day, target, easy, trip.preferences))
         else:
             changes.append(remove_activity(day, target, "you're running on empty"))
 
@@ -495,7 +495,7 @@ def handle_tired(trip: Trip, dest: Destination, day: DayPlan) -> tuple[list[Itin
         forbid={a.place.id for a in day.activities},
     )
     if cafe and not any(a.place.id == cafe.id for a in day.activities):
-        act = make_activity(cafe, Slot.afternoon, trip.preferences.travelers, is_meal=True)
+        act = make_activity(cafe, Slot.afternoon, trip.preferences, is_meal=True)
         act.duration_minutes = 60
         act.note = "A deliberate sit-down"
         changes.append(insert_activity(day, act))
@@ -552,7 +552,7 @@ def handle_hungry(
     # Slot it as lunch or dinner depending on what the day is missing.
     has_lunch = any(a.is_meal and a.slot == Slot.afternoon for a in day.activities)
     slot = Slot.evening if has_lunch else Slot.afternoon
-    act = make_activity(pick, slot, trip.preferences.travelers, is_meal=True)
+    act = make_activity(pick, slot, trip.preferences, is_meal=True)
     change = insert_activity(day, act)
     retime_day(day)
 
@@ -635,13 +635,13 @@ def handle_over_budget(trip: Trip, dest: Destination, day: DayPlan) -> tuple[lis
             if not replacement or replacement.id == act.place.id:
                 continue
             before_cost = act.estimated_cost
-            saving = before_cost - round(
-                places_svc.base_cost(replacement) * trip.preferences.travelers, 2
+            saving = before_cost - places_svc.activity_cost(
+                replacement, trip.preferences
             )
             if saving <= 0:
                 continue  # a "cheaper" option that costs more is not an answer
             used.add(replacement.id)
-            change = replace_activity(d, act, replacement, trip.preferences.travelers)
+            change = replace_activity(d, act, replacement, trip.preferences)
             change.kind = "downgraded"
             change.summary = (
                 f"{change.before} → {change.after} "
@@ -662,7 +662,7 @@ def handle_over_budget(trip: Trip, dest: Destination, day: DayPlan) -> tuple[lis
             if free_alt:
                 saved += priciest.estimated_cost
                 used.add(free_alt.id)
-                change = replace_activity(d, priciest, free_alt, trip.preferences.travelers)
+                change = replace_activity(d, priciest, free_alt, trip.preferences)
                 change.kind = "downgraded"
                 change.summary = f"{change.before} → {change.after} (free entry)"
                 changes.append(change)
@@ -707,7 +707,7 @@ def handle_free_time(
     if not pick:
         return [], f"Nothing nearby fits neatly into {minutes} minutes — take the break."
 
-    act = make_activity(pick, Slot.afternoon, trip.preferences.travelers)
+    act = make_activity(pick, Slot.afternoon, trip.preferences)
     act.duration_minutes = min(places_svc.base_duration(pick), minutes - 20)
     change = insert_activity(day, act)
 
@@ -924,9 +924,7 @@ def revert(trip: Trip, changes: list[ItineraryChange]) -> None:
                 act.place = original
                 act.title = original.name
                 act.duration_minutes = places_svc.base_duration(original)
-                act.estimated_cost = round(
-                    places_svc.base_cost(original) * trip.preferences.travelers, 2
-                )
+                act.estimated_cost = places_svc.activity_cost(original, trip.preferences)
                 act.local_tip = original.description
                 act.origin = "planned"
                 act.note = None

@@ -150,6 +150,33 @@ COUNTRY_META: dict[str, dict[str, Any]] = {
     "Portugal": {"plug": "Type F, 230V", "tipping": "5-10% in restaurants, nothing in cafés."},
 }
 
+# Country -> absolute cost level, where 1.0 is a mid-priced Western European or
+# US city.
+#
+# This exists because Google's `priceLevel` is *relative to the local market*:
+# a "moderate" restaurant in Udaipur and one in Zurich are both PRICE_LEVEL_
+# MODERATE despite differing by roughly ten times. Deriving a destination's
+# cost level from price levels alone therefore prices every city as if it were
+# in Western Europe. These are rough cost-of-living ratios, good enough to put
+# an estimate in the right order of magnitude.
+COUNTRY_COST_INDEX: dict[str, float] = {
+    "Switzerland": 1.55, "Norway": 1.45, "Iceland": 1.40, "Denmark": 1.30,
+    "United States": 1.15, "USA": 1.15, "Ireland": 1.15, "Australia": 1.10,
+    "Singapore": 1.10, "United Kingdom": 1.10, "UK": 1.10, "Sweden": 1.05,
+    "Netherlands": 1.05, "France": 1.05, "Austria": 1.00, "Belgium": 1.00,
+    "Germany": 0.98, "Canada": 0.98, "New Zealand": 0.98, "Japan": 0.92,
+    "Italy": 0.90, "Spain": 0.82, "South Korea": 0.80, "Greece": 0.78,
+    "Portugal": 0.75, "Czechia": 0.68, "Croatia": 0.66, "Poland": 0.60,
+    "United Arab Emirates": 0.90, "Israel": 1.05, "China": 0.55,
+    "Turkey": 0.42, "Brazil": 0.42, "Mexico": 0.45, "South Africa": 0.42,
+    "Malaysia": 0.38, "Thailand": 0.38, "Morocco": 0.36, "Peru": 0.36,
+    "Colombia": 0.33, "Egypt": 0.28, "Vietnam": 0.30, "Indonesia": 0.32,
+    "Philippines": 0.32, "Sri Lanka": 0.28, "India": 0.28, "Nepal": 0.26,
+    "Pakistan": 0.25, "Bangladesh": 0.26,
+}
+
+DEFAULT_COUNTRY_COST_INDEX = 0.85
+
 # Country -> (language, currency). Used when a destination comes from a live
 # provider rather than the curated catalog, which carries its own values.
 COUNTRY_PROFILE: dict[str, tuple[str, str]] = {

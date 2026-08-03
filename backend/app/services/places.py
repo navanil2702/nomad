@@ -183,9 +183,17 @@ def _live_meta(destination: str, catalog: dict) -> dict:
     centre = catalog["center"]
 
     live_places: list[Place] = catalog["places"]
-    # Price levels across the catalog stand in for how expensive the city is.
+
+    # Anchor on the country's absolute cost level. Google's price levels are
+    # relative to the local market, so on their own they would price Udaipur
+    # like Vienna; they are only used to nudge within the country, for the
+    # difference between a resort town and a provincial one.
+    from ..data.knowledge import COUNTRY_COST_INDEX, DEFAULT_COUNTRY_COST_INDEX
+
+    base_index = COUNTRY_COST_INDEX.get(country, DEFAULT_COUNTRY_COST_INDEX)
     levels = [p.price_level for p in live_places] or [2]
-    cost_index = round(0.55 + (sum(levels) / len(levels)) * 0.28, 2)
+    local_skew = 0.85 + (sum(levels) / len(levels)) * 0.075  # ~0.85–1.15
+    cost_index = round(base_index * local_skew, 2)
 
     return {
         "name": destination.split(",")[0].strip().title(),
@@ -326,8 +334,14 @@ def resolve(destination: str, *, allow_live: bool = True) -> Destination:
         key, meta = _curated_or_generated(destination)
         places = [_build_place(raw, meta["daily_cost_index"]) for raw in meta["places"]]
         by_id = {p.id: p for p in places}
+        # The cost index scales *generic* figures — the price-level bands used
+        # for live places, and the template costs in a generated catalog — to
+        # the local market. Curated costs are already researched local prices,
+        # so applying it there would double-count the destination and quietly
+        # halve every price in a cheap city.
+        index = 1.0 if meta.get("source") == "curated" else meta["daily_cost_index"]
         for raw in meta["places"]:
-            cost = raw.get("cost", 0) * meta["daily_cost_index"]
+            cost = raw.get("cost", 0) * index
             duration = raw.get("duration", 90)
             _register(raw["id"], cost, duration)
             if raw["id"] in by_id:
@@ -339,7 +353,24 @@ def resolve(destination: str, *, allow_live: bool = True) -> Destination:
 
 
 def base_cost(place: Place) -> float:
+    """Per-person cost of visiting, in USD."""
     return round(_PLACE_COST.get(place.id, 10.0), 2)
+
+
+def to_currency(usd: float, currency: str) -> float:
+    """USD -> the trip's currency.
+
+    Every figure in the catalogs is USD so destinations stay comparable. The
+    traveller's budget and their logged expenses are in *their* currency, so
+    planned costs have to be converted or none of the budget arithmetic means
+    anything.
+    """
+    return round(usd * currency_rate(currency), 2)
+
+
+def activity_cost(place: Place, prefs) -> float:
+    """What a stop costs the whole party, in the trip's currency."""
+    return to_currency(base_cost(place) * prefs.travelers, prefs.currency)
 
 
 def base_duration(place: Place) -> int:

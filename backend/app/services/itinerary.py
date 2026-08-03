@@ -119,9 +119,12 @@ def _score(
     elif weather and weather.temp_max_c >= 32 and place.indoor:
         score += 2.0
 
-    # Budget pressure favours cheaper stops.
+    # Budget pressure favours cheaper stops. The traveller's budget is in their
+    # currency and catalog costs are USD, so this has to convert before
+    # comparing — otherwise every stop looks affordable in JPY and ruinous in
+    # KWD purely because of the exchange rate.
     daily_budget = prefs.budget / max(_trip_length(prefs), 1) / max(prefs.travelers, 1)
-    cost = places_svc.base_cost(place)
+    cost = places_svc.to_currency(places_svc.base_cost(place), prefs.currency)
     if cost > daily_budget * 0.45:
         score -= 3.0
     elif cost == 0:
@@ -212,14 +215,14 @@ def _activity(
     slot: Slot,
     start_minutes: int,
     prev: Place | None,
-    travelers: int,
+    prefs: TripPreferences,
     is_meal: bool = False,
 ) -> Activity:
     duration = places_svc.base_duration(place)
     travel_minutes, mode = (
         places_svc.travel_estimate(prev, place) if prev else (0, "walk")
     )
-    cost = round(places_svc.base_cost(place) * travelers, 2)
+    cost = places_svc.activity_cost(place, prefs)
 
     return Activity(
         slot=slot,
@@ -267,7 +270,7 @@ def build_day(
         place: Place, slot: Slot, is_meal: bool = False, floor: int | None = None
     ) -> None:
         nonlocal clock, prev
-        act = _activity(place, slot, clock, prev, prefs.travelers, is_meal=is_meal)
+        act = _activity(place, slot, clock, prev, prefs, is_meal=is_meal)
         arrival = clock + act.travel_time_minutes
         if floor is not None:
             arrival = max(arrival, floor)
@@ -362,9 +365,11 @@ def _day_summary(day: DayPlan, weather: WeatherDay | None) -> str:
 
 
 def build_budget(trip_days: list[DayPlan], prefs: TripPreferences, dest: Destination) -> BudgetBreakdown:
+    # Activity costs are already in the trip's currency; the transport and
+    # accommodation models are USD and get converted at the end.
     food = 0.0
     activities = 0.0
-    transport = 0.0
+    transport_usd = 0.0
 
     for day in trip_days:
         for act in day.activities:
@@ -372,19 +377,19 @@ def build_budget(trip_days: list[DayPlan], prefs: TripPreferences, dest: Destina
                 food += act.estimated_cost
             else:
                 activities += act.estimated_cost
-            # Rough per-leg transport cost by mode.
+            # Rough per-leg transport cost by mode, in USD.
             per_person = {"walk": 0.0, "transit": 2.2, "taxi": 9.0}[act.travel_mode]
-            transport += per_person * prefs.travelers * dest.cost_index
+            transport_usd += per_person * prefs.travelers * dest.cost_index
 
     nights = max((prefs.end_date - prefs.start_date).days, 1)
     rooms = math.ceil(prefs.travelers / 2)
-    nightly = 105 * dest.cost_index
-    accommodation = round(nights * rooms * nightly, 2)
+    nightly_usd = 105 * dest.cost_index
+    accommodation_usd = nights * rooms * nightly_usd
 
     return BudgetBreakdown(
-        accommodation=accommodation,
+        accommodation=places_svc.to_currency(accommodation_usd, prefs.currency),
         food=round(food, 2),
-        transport=round(transport, 2),
+        transport=places_svc.to_currency(transport_usd, prefs.currency),
         activities=round(activities, 2),
     )
 
