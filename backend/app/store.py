@@ -156,8 +156,12 @@ class SupabaseStore:
     def save(self, trip: Trip) -> Trip:
         trip.touch()
         payload = json.loads(trip.model_dump_json())
+        # PostgREST only upserts when told which column identifies a conflict.
+        # Without on_conflict this is a plain insert and the second save of a
+        # trip fails on the primary key.
         r = self._client.post(
             "/trips",
+            params={"on_conflict": "id"},
             json={
                 "id": trip.id,
                 "owner": trip.owner,
@@ -170,8 +174,18 @@ class SupabaseStore:
         return trip
 
     def delete(self, trip_id: str) -> bool:
-        r = self._client.delete("/trips", params={"id": f"eq.{trip_id}"})
-        return r.status_code < 300
+        r = self._client.delete(
+            "/trips",
+            params={"id": f"eq.{trip_id}"},
+            headers={"Prefer": "return=representation"},
+        )
+        r.raise_for_status()
+        # PostgREST returns the deleted rows, so an empty list means "not found"
+        # rather than "deleted nothing successfully".
+        try:
+            return bool(r.json())
+        except ValueError:
+            return False
 
 
 _store: TripStore | None = None

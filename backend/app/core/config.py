@@ -7,13 +7,19 @@ runs end-to-end with zero configuration.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = REPO_ROOT / "backend" / ".data"
+
+# Serverless platforms mount the deployment read-only and give you /tmp. The
+# JSON store is only a development convenience there — anything that needs to
+# survive a cold start belongs in Supabase.
+IS_SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+DATA_DIR = Path("/tmp/nomad-data") if IS_SERVERLESS else REPO_ROOT / "backend" / ".data"
 
 
 class Settings(BaseSettings):
@@ -43,6 +49,10 @@ class Settings(BaseSettings):
     # Where the JSON-file store keeps trips when Supabase is not configured.
     data_dir: Path = DATA_DIR
 
+    # Create the sample Tokyo trip on an empty store. Turn off for a
+    # deployment you want to start clean.
+    seed_demo_trip: bool = True
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -62,6 +72,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    return settings
+    """Settings are read once per process.
+
+    Deliberately does not touch the filesystem: serverless roots are
+    read-only, so creating the data directory is left to JsonFileStore, which
+    is the only thing that needs it.
+    """
+    return Settings()

@@ -36,14 +36,20 @@ DEMO_EXPENSES: list[tuple[int, str, float, ExpenseCategory]] = [
 ]
 
 
-def seed_if_empty() -> None:
+def seed_if_empty() -> bool:
+    """Create the demo trip if the store is empty. Returns whether it did."""
+    from .core.config import get_settings
+
+    if not get_settings().seed_demo_trip:
+        return False
+
     store = get_store()
     try:
         if store.list():
-            return
+            return False
     except Exception as exc:
         log.warning("Could not read store, skipping seed: %s", exc)
-        return
+        return False
 
     today = date.today()
     start = today - timedelta(days=1)
@@ -81,3 +87,4 @@ def seed_if_empty() -> None:
 
     store.save(trip)
     log.info("Seeded demo trip %s (%s)", trip.id, trip.title)
+    return True

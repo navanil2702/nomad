@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import get_settings
 from .routers import companion, expenses, journal, tools, trips
 from .seed import seed_if_empty
+from .store import get_store
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("nomad")
@@ -26,7 +27,12 @@ async def lifespan(app: FastAPI):
         "live" if settings.live_maps else "offline",
         "supabase" if settings.supabase_url else "json-file",
     )
-    seed_if_empty()
+    try:
+        seed_if_empty()
+    except Exception as exc:
+        # A store that is unreachable at boot must not take the API down; the
+        # health endpoint and the error surface in the UI are more useful.
+        log.warning("Seeding skipped: %s", exc)
     yield
 
 
@@ -57,6 +63,15 @@ app.include_router(journal.router)
 app.include_router(tools.router)
 
 
+@app.get("/")
+def root() -> dict:
+    return {
+        "service": settings.app_name,
+        "docs": "/docs",
+        "health": "/api/health",
+    }
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {
@@ -68,3 +83,14 @@ def health() -> dict:
             "database": "supabase" if settings.supabase_url else "json-file",
         },
     }
+
+
+@app.post("/api/seed")
+def seed() -> dict:
+    """Create the demo trip if the store is empty.
+
+    Idempotent. Exists because some serverless runtimes never run ASGI
+    lifespan events, so the boot-time seed may not have fired.
+    """
+    created = seed_if_empty()
+    return {"seeded": created, "trips": len(get_store().list())}

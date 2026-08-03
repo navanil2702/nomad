@@ -17,12 +17,19 @@ import type {
 
 /**
  * In the browser, requests go to the same origin and Next's rewrite forwards
- * them to FastAPI — so there is no CORS step. On the server there is no origin
- * to be relative to, so fall back to the API's own address.
+ * them to FastAPI — so there is no CORS step, locally or in production.
+ *
+ * On the server there is no origin to be relative to, so it calls the API
+ * directly: `API_URL` in a deployment, localhost otherwise. Setting
+ * `NEXT_PUBLIC_API_URL` overrides both and makes the browser call the API
+ * cross-origin, which then does require `CORS_ORIGINS` on the backend.
  */
 const BASE =
-  process.env.NEXT_PUBLIC_API_URL ??
-  (typeof window === "undefined" ? "http://127.0.0.1:8000" : "");
+  typeof window === "undefined"
+    ? (process.env.NEXT_PUBLIC_API_URL ??
+       process.env.API_URL ??
+       "http://127.0.0.1:8000")
+    : (process.env.NEXT_PUBLIC_API_URL ?? "");
 
 export class ApiError extends Error {
   constructor(

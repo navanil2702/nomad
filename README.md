@@ -226,6 +226,16 @@ GET    /api/timezone                       GET /api/shared/{token}
 Copy `.env.example` to `.env` (backend) or `frontend/.env.local` (frontend) and
 uncomment what you want. Everything is optional.
 
+## Deploying
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** — two Vercel projects from this repo
+(`backend/` and `frontend/`) with Supabase for storage, all on free tiers.
+
+The JSON-file store cannot survive on a serverless filesystem, so a deployment
+needs Supabase; `supabase/schema.sql` is the one-time setup. In production the
+frontend proxies `/api/*` server-side via `API_URL`, so the browser stays
+same-origin and there is no CORS to configure.
+
 ## Notes
 
 - Deep-link any dashboard panel with `?tab=map`, `?tab=expenses`, etc.
