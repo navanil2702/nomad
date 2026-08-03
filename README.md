@@ -190,7 +190,7 @@ default.
 | Places | Google Places API (New) — real venues, hours, ratings, price levels, photos | Curated catalog for six cities; generated catalog anywhere else |
 | Maps | Google Maps JS API — real tiles, markers, day routes | Coordinate projection over a styled canvas; pins still deep-link out |
 | Weather | OpenWeather 5-day forecast | Seeded climate model, stable per trip |
-| AI | OpenAI (`OPENAI_MODEL`, default `gpt-4o-mini`) for phrasing and for classifying messages the keywords miss | Template phrasing; keyword classification only. **Itinerary decisions are identical either way** |
+| AI | OpenAI (`OPENAI_MODEL`, default `gpt-4o-mini`) for phrasing, for classifying messages the keywords miss, and for per-place price estimates | Template phrasing; keyword classification; price-level bands. **Itinerary decisions are identical either way** |
 | Database | Supabase Postgres | JSON files under `backend/.data/` |
 | Auth | Google Identity Services | Local demo profile |
 
@@ -219,6 +219,34 @@ signed, key-less URLs server-side, so the Places key never reaches a browser.
 > at whatever you actually have access to.
 
 ---
+
+## How activity pricing works
+
+```
+activity cost = per-person price × destination cost index × travellers × FX rate
+```
+
+The per-person price comes from the best source available, and a trip records
+which one it used in `catalog.pricing`:
+
+| `pricing` | Source |
+| --- | --- |
+| `researched` | Hand-checked real prices in the curated catalog |
+| `estimated` | The model, asked for actual admission and typical per-head spend |
+| `price-band` | Google's five `priceLevel` buckets mapped to USD |
+| `template` | Generic placeholder costs for an invented catalog |
+
+Model estimates are validated before use: anything unparseable, negative, over
+$500, or more than 8× off the band it replaces is discarded and the band
+stands. A zero is always accepted — plenty of temples, markets and squares are
+genuinely free while sitting in a non-zero price band. If more than half a
+batch is rejected the whole thing is thrown away.
+
+The **cost index** only scales *generic* figures. Researched and estimated
+prices are already local, so applying it to them would double-count the
+destination.
+
+Set `LLM_PRICING=false` to keep the bands and save a call per trip.
 
 ## API
 

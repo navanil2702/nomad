@@ -82,6 +82,105 @@ def complete(
         return None
 
 
+def estimate_place_costs(
+    *,
+    destination: str,
+    country: str,
+    places: list[dict],
+) -> dict[str, float] | None:
+    """Ask for a realistic per-person cost, in USD, for each place.
+
+    This replaces a price-level band — Google's `priceLevel` is five buckets
+    and says nothing about what a ticket actually costs. The model has read a
+    great many menus and admission pages, which makes it a genuinely better
+    estimator here than a lookup table.
+
+    It is still an estimate from a model, so the caller validates every value
+    before trusting it. Anything unparseable, negative, or wildly out of line
+    with the band it replaces is discarded and the band stands.
+    """
+    settings = get_settings()
+    if not settings.live_ai or not settings.llm_pricing or not places:
+        return None
+
+    prompt = json.dumps(
+        {
+            "destination": destination,
+            "country": country,
+            "places": places,
+            "task": (
+                "For each place give the realistic cost for ONE person in USD. "
+                "For attractions that is standard adult admission — use 0 for "
+                "places that are free to enter, which includes most parks, "
+                "temples, markets, squares and viewpoints. For restaurants, "
+                "cafes and bars it is a typical spend per head for one visit, "
+                "including a drink. Use local prices for this city, not "
+                "international averages. Return JSON shaped exactly as "
+                '{"costs": {"<id>": <number>, ...}} with an entry for every '
+                "id given, and no commentary."
+            ),
+        },
+        ensure_ascii=False,
+    )
+
+    raw = complete_json(
+        prompt,
+        system=(
+            "You estimate travel prices. You know local price levels and you "
+            "do not inflate them. You reply with JSON only."
+        ),
+        max_tokens=1600,
+    )
+    if not raw:
+        return None
+
+    costs = raw.get("costs")
+    if not isinstance(costs, dict):
+        return None
+
+    cleaned: dict[str, float] = {}
+    for place_id, value in costs.items():
+        try:
+            amount = float(value)
+        except (TypeError, ValueError):
+            continue
+        if amount < 0 or amount > 500:
+            continue
+        cleaned[str(place_id)] = round(amount, 2)
+    return cleaned or None
+
+
+def complete_json(
+    user_prompt: str, *, system: str, max_tokens: int = 800
+) -> dict | None:
+    """Completion constrained to a JSON object. None on any failure."""
+    client = _client()
+    if client is None:
+        providers.registry.disabled("ai")
+        return None
+    try:
+        with client:
+            r = client.post(
+                "/chat/completions",
+                json={
+                    "model": get_settings().openai_model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            r.raise_for_status()
+            providers.registry.success("ai")
+            return json.loads(r.json()["choices"][0]["message"]["content"])
+    except Exception as exc:
+        providers.registry.failure("ai", f"{type(exc).__name__}: {exc}")
+        return None
+
+
 def classify_intent(message: str, allowed: list[str]) -> str | None:
     """Last-resort intent classification for phrasing the keywords missed.
 

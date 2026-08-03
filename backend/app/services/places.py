@@ -8,6 +8,7 @@ the product never dead-ends on an unrecognised destination.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import unicodedata
 
@@ -16,6 +17,8 @@ from ..data.destinations import DESTINATIONS, GENERIC_TEMPLATE
 from ..data.knowledge import CURRENCY_RATES
 from ..models.schemas import Coordinates, DestinationCatalog, Interest, Place
 from . import google_places, providers
+
+log = logging.getLogger(__name__)
 
 _MEAL_CATEGORIES = {"meal"}
 
@@ -51,6 +54,8 @@ class Destination:
         # "google-places", "curated" or "generated" — surfaced so the UI can
         # be honest about where the plan's places came from.
         self.source: str = meta.get("source", "curated")
+        # "researched" | "estimated" | "price-band" | "template"
+        self.pricing: str = meta.get("pricing", "researched")
 
     # -- filtered views ----------------------------------------------------
     @property
@@ -231,6 +236,82 @@ def _register(place_id: str, cost: float, duration: int) -> None:
     _PLACE_DURATION[place_id] = duration
 
 
+# How far an estimated price may sit from the band it replaces before it is
+# treated as a hallucination. Generous on purpose — the whole reason to ask is
+# that the bands are crude — but it still stops a $400 temple ticket from
+# reshaping an itinerary through the budget-pressure score.
+_PRICE_SANITY_FLOOR = 0.1
+_PRICE_SANITY_CEILING = 8.0
+
+
+def _apply_estimated_costs(
+    places: list[Place], baseline: dict[str, float], destination: str, country: str
+) -> tuple[dict[str, float], bool]:
+    """Replace crude cost estimates with model estimates where they look sane.
+
+    `baseline` must already be in local terms — the destination cost index
+    applied — because rejected estimates fall back to it and the result of this
+    function is used as-is. Returns the costs and whether the model was
+    actually used.
+    """
+    from . import llm
+
+    estimates = llm.estimate_place_costs(
+        destination=destination,
+        country=country,
+        places=[
+            {
+                "id": p.id,
+                "name": p.name,
+                "kind": str(getattr(p.category, "value", p.category)),
+                "price_level": p.price_level,
+                "free_hint": bool({"free", "park", "plaza"} & set(p.tags)),
+            }
+            for p in places
+        ],
+    )
+    if not estimates:
+        return baseline, False
+
+    costs = dict(baseline)
+    accepted = 0
+    for place in places:
+        estimate = estimates.get(place.id)
+        if estimate is None:
+            continue
+        band = baseline.get(place.id, 0.0)
+
+        # "This is free" is a common, correct and harmless answer — bazaars,
+        # temples and squares routinely charge nothing while sitting in a
+        # non-zero price band. A zero can never blow a budget, so take it.
+        if estimate == 0:
+            costs[place.id] = 0.0
+            accepted += 1
+            continue
+
+        # A free band is no anchor to sanity-check against, so fall back to an
+        # absolute ceiling for a plausible entry fee.
+        if band <= 0:
+            if estimate <= 30:
+                costs[place.id] = estimate
+                accepted += 1
+            continue
+
+        if _PRICE_SANITY_FLOOR * band <= estimate <= _PRICE_SANITY_CEILING * band:
+            costs[place.id] = estimate
+            accepted += 1
+
+    if accepted < len(places) * 0.5:
+        # Too many rejects to trust the batch; keep the bands.
+        log.warning(
+            "estimated prices rejected for %s (%d/%d accepted)",
+            destination, accepted, len(places),
+        )
+        return baseline, False
+
+    return costs, True
+
+
 def to_catalog(dest: Destination) -> DestinationCatalog:
     """Freeze a resolved Destination so it can be stored with a trip."""
     return DestinationCatalog(
@@ -245,6 +326,7 @@ def to_catalog(dest: Destination) -> DestinationCatalog:
         daily_cost_index=dest.cost_index,
         blurb=dest.blurb,
         source=dest.source,
+        pricing=dest.pricing,
         center=dest.center,
         places=dest.places,
         costs={p.id: base_cost(p) for p in dest.places},
@@ -270,6 +352,7 @@ def from_catalog(catalog: DestinationCatalog) -> Destination:
         "daily_cost_index": catalog.daily_cost_index,
         "blurb": catalog.blurb,
         "source": catalog.source,
+        "pricing": catalog.pricing,
         "curated": catalog.source == "curated",
         "center": {"lat": catalog.center.lat, "lng": catalog.center.lng},
     }
@@ -321,13 +404,25 @@ def resolve(destination: str, *, allow_live: bool = True) -> Destination:
         if catalog:
             meta = _live_meta(destination, catalog)
             live_places: list[Place] = catalog["places"]
-            for place in live_places:
-                cost = google_places.estimated_cost(
-                    place.category, place.price_level, place.indoor
+
+            # Scale the bands to the destination first, so they are directly
+            # comparable to a model estimate and usable as its fallback.
+            bands = {
+                p.id: google_places.estimated_cost(
+                    p.category, p.price_level, p.indoor
                 ) * meta["daily_cost_index"]
+                for p in live_places
+            }
+            costs, estimated = _apply_estimated_costs(
+                live_places, bands, destination, meta["country"]
+            )
+            meta["pricing"] = "estimated" if estimated else "price-band"
+
+            for place in live_places:
+                cost = round(costs[place.id], 2)
                 duration = google_places.visit_duration(place.category)
-                registry_entries.append((place, round(cost, 2), duration))
-                _register(place.id, round(cost, 2), duration)
+                registry_entries.append((place, cost, duration))
+                _register(place.id, cost, duration)
             dest = Destination(query, meta, live_places)
 
     if dest is None:
@@ -339,9 +434,23 @@ def resolve(destination: str, *, allow_live: bool = True) -> Destination:
         # the local market. Curated costs are already researched local prices,
         # so applying it there would double-count the destination and quietly
         # halve every price in a cheap city.
-        index = 1.0 if meta.get("source") == "curated" else meta["daily_cost_index"]
+        curated = meta.get("source") == "curated"
+        index = 1.0 if curated else meta["daily_cost_index"]
+        costs = {raw["id"]: raw.get("cost", 0) * index for raw in meta["places"]}
+
+        # A generated catalog's costs are template placeholders, so they are
+        # worth replacing with estimates. Curated costs are researched real
+        # prices and are left alone — a model guess would be a downgrade.
+        if not curated:
+            costs, are_local = _apply_estimated_costs(
+                places, costs, destination, meta["country"]
+            )
+            meta["pricing"] = "estimated" if are_local else "template"
+        else:
+            meta["pricing"] = "researched"
+
         for raw in meta["places"]:
-            cost = raw.get("cost", 0) * index
+            cost = costs.get(raw["id"], 0.0)
             duration = raw.get("duration", 90)
             _register(raw["id"], cost, duration)
             if raw["id"] in by_id:

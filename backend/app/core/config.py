@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
+    # Ask the model for real per-place prices instead of using Google's
+    # five price-level buckets. One extra call per catalog build.
+    llm_pricing: bool = True
 
     openweather_api_key: str | None = None
     google_maps_api_key: str | None = None

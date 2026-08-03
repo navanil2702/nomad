@@ -292,6 +292,9 @@ class DestinationCatalog(BaseModel):
     daily_cost_index: float
     blurb: str = ""
     source: str = "curated"
+    # How the prices were arrived at: "researched" (hand-checked),
+    # "estimated" (model), "price-band" (Google price level) or "template".
+    pricing: str = "researched"
     center: Coordinates
     places: list[Place] = Field(default_factory=list)
     # Planning metadata that is derived, not part of the Place itself.

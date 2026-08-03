@@ -216,6 +216,8 @@ export interface DestinationCatalog {
   blurb: string;
   /** "google-places" | "curated" | "generated" */
   source: string;
+  /** "researched" | "estimated" | "price-band" | "template" */
+  pricing: string;
   center: Coordinates;
   places: Place[];
   costs: Record<string, number>;
