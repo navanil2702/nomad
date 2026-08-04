@@ -9,8 +9,10 @@ import {
   Download,
   Languages,
   Loader2,
+  Navigation,
   Phone,
   Plug,
+  FileText,
   Share2,
   Wallet,
   WifiOff,
@@ -112,7 +114,7 @@ function EmergencyCard({ info }: { info: LocalInfo }) {
       <ul className="mt-4 space-y-2">
         {info.emergency.map((e) => (
           <li
-            key={e.label}
+            key={`${e.label}-${e.number}`}
             className="flex items-center gap-3 rounded-xl border border-border p-3"
           >
             <div className="min-w-0 flex-1">
@@ -128,8 +130,35 @@ function EmergencyCard({ info }: { info: LocalInfo }) {
           </li>
         ))}
       </ul>
+
+      {info.nearby_help.length > 0 && (
+        <div className="mt-5 border-t border-border pt-4">
+          <div className="flex items-center gap-2">
+            <Navigation className="size-3.5 text-primary" />
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Nearest help in {info.city}
+            </h4>
+          </div>
+          <div className="mt-2.5 grid gap-1.5 sm:grid-cols-2">
+            {info.nearby_help.map((h) => (
+              <a
+                key={h.label}
+                href={h.maps_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-border px-3 py-2 transition-colors hover:border-primary/40 hover:bg-secondary/50"
+              >
+                <span className="block text-sm font-medium">{h.label}</span>
+                <span className="block text-xs text-muted-foreground">{h.note}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="mt-3 text-xs text-muted-foreground">
-        Save these before you land — they work without data.
+        Save the numbers before you land — they work without data. The map links
+        need a connection.
       </p>
     </Card>
   );
@@ -334,25 +363,35 @@ function OfflineCard({ trip }: { trip: Trip }) {
   async function download() {
     setDownloading(true);
     try {
-      const bundle = await api.getOffline(trip.id);
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-        type: "application/json",
-      });
+      const res = await fetch(api.offlinePdfUrl(trip.id));
+      if (!res.ok) throw new Error("pdf");
+      const blob = await res.blob();
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `nomad-${trip.preferences.destination.toLowerCase().replace(/\W+/g, "-")}.json`;
+      a.download = `nomad-${trip.preferences.destination.toLowerCase().replace(/\W+/g, "-")}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-      // Also cache it so the trip survives a dead connection.
-      localStorage.setItem(`nomad.offline.${trip.id}`, JSON.stringify(bundle));
+
+      // Cache the JSON alongside it, so the app itself still has the trip if
+      // the connection dies — the PDF is for reading, this is for the app.
+      api
+        .getOffline(trip.id)
+        .then((bundle) =>
+          localStorage.setItem(`nomad.offline.${trip.id}`, JSON.stringify(bundle)),
+        )
+        .catch(() => {
+          /* the PDF is the deliverable; caching is a bonus */
+        });
+
       toast({
-        title: "Offline copy saved",
-        description: "Downloaded and cached in this browser.",
+        title: "Itinerary PDF downloaded",
+        description: "Print it or keep it on your phone. No signal needed.",
         tone: "success",
       });
     } catch {
-      toast({ title: "Couldn't build the offline copy", tone: "error" });
+      toast({ title: "Couldn't build the PDF", tone: "error" });
     } finally {
       setDownloading(false);
     }
@@ -365,9 +404,9 @@ function OfflineCard({ trip }: { trip: Trip }) {
         <h3 className="text-sm font-semibold">Offline itinerary</h3>
       </div>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-        Every stop with its address, coordinates, opening hours, tip and Maps link —
-        plus emergency numbers, phrases and what's still unpacked. Works with no
-        signal.
+        A printable PDF: every stop with its address, coordinates, opening hours
+        and tip, plus emergency numbers, phrases and what's still unpacked. Works
+        with no signal.
       </p>
       <Button
         variant="outline"
@@ -375,8 +414,8 @@ function OfflineCard({ trip }: { trip: Trip }) {
         onClick={download}
         disabled={downloading}
       >
-        {downloading ? <Loader2 className="animate-spin" /> : <Download />}
-        Download offline copy
+        {downloading ? <Loader2 className="animate-spin" /> : <FileText />}
+        Download PDF itinerary
       </Button>
     </Card>
   );

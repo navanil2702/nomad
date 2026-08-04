@@ -9,6 +9,7 @@ from ..models.schemas import (
     Expense,
     ExpenseStats,
     LocalInfo,
+    NearbyHelp,
     Trip,
     TripCreate,
 )
@@ -95,28 +96,68 @@ def add_expense(trip: Trip, expense: Expense) -> Trip:
     return trip
 
 
+NEARBY_HELP = [
+    ("Nearest hospital", "hospital", "Emergency department"),
+    ("Nearest police station", "police station", "To report a theft or lost passport"),
+    ("Nearest pharmacy", "pharmacy chemist", "For medicines and basic supplies"),
+    ("Nearest ATM", "ATM", "If cards stop working"),
+]
+
+
+def _nearby_help(trip: Trip, city: str) -> list[NearbyHelp]:
+    """Maps searches anchored on the trip's own coordinates."""
+    lat, lng = trip.center.lat, trip.center.lng
+    out: list[NearbyHelp] = []
+    for label, query, note in NEARBY_HELP:
+        term = f"{query} near {city}".replace(" ", "+")
+        out.append(
+            NearbyHelp(
+                label=label,
+                note=note,
+                maps_url=(
+                    "https://www.google.com/maps/search/?api=1"
+                    f"&query={term}&center={lat},{lng}"
+                ),
+            )
+        )
+    return out
+
+
 def local_info(trip: Trip) -> LocalInfo:
     from ..data.knowledge import (
         COUNTRY_META,
-        CURRENCY_RATES,
         DEFAULT_COUNTRY_META,
         DEFAULT_EMERGENCY,
         EMERGENCY,
         PHRASES,
+        regional_emergency,
     )
 
     dest = places_svc.for_trip(trip)
     meta = COUNTRY_META.get(dest.country, DEFAULT_COUNTRY_META)
 
+    # The destination as the traveller typed it carries the region: "Udaipur,
+    # Rajasthan" or "Varkala, Kerala, India". Anything between the city and the
+    # country is the state or province.
+    parts = [p.strip() for p in trip.preferences.destination.split(",") if p.strip()]
+    city = parts[0] if parts else dest.name
+    region = parts[1] if len(parts) > 2 else ""
+
+    contacts = list(EMERGENCY.get(dest.country, DEFAULT_EMERGENCY))
+    contacts = regional_emergency(dest.country, region, city) + contacts
+
     return LocalInfo(
         country=dest.country,
+        region=region,
+        city=city,
         language=dest.language,
         currency=dest.currency,
-        currency_rate_from_usd=CURRENCY_RATES.get(dest.currency, 1.0),
+        currency_rate_from_usd=places_svc.currency_rate(dest.currency),
         timezone=dest.timezone,
         utc_offset_hours=dest.utc_offset_hours,
         phrases=PHRASES.get(dest.language, PHRASES["English"]),  # type: ignore[arg-type]
-        emergency=EMERGENCY.get(dest.country, DEFAULT_EMERGENCY),  # type: ignore[arg-type]
+        emergency=contacts,  # type: ignore[arg-type]
+        nearby_help=_nearby_help(trip, city),
         plug_type=meta["plug"],
         tipping=meta["tipping"],
     )

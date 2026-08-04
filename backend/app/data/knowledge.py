@@ -92,6 +92,18 @@ PHRASES: dict[str, list[dict[str, str]]] = {
         {"english": "Help!", "local": "Socorro!", "pronunciation": "soo-ko-rroo"},
         {"english": "The bill, please", "local": "A conta, por favor", "pronunciation": "a kon-ta por fa-vor"},
     ],
+    "Hindi": [
+        {"english": "Hello", "local": "नमस्ते", "pronunciation": "na-mas-tay"},
+        {"english": "Thank you", "local": "धन्यवाद", "pronunciation": "dhan-ya-vaad"},
+        {"english": "Excuse me", "local": "सुनिए", "pronunciation": "su-ni-ye"},
+        {"english": "How much is this?", "local": "यह कितने का है?", "pronunciation": "yeh kit-ne ka hai"},
+        {"english": "Too expensive", "local": "बहुत महंगा है", "pronunciation": "ba-hut ma-hen-ga hai"},
+        {"english": "I'm vegetarian", "local": "मैं शाकाहारी हूँ", "pronunciation": "main shaa-ka-haa-ree hoon"},
+        {"english": "No spice, please", "local": "मिर्च मत डालिए", "pronunciation": "mirch mat daa-li-ye"},
+        {"english": "Where is the station?", "local": "स्टेशन कहाँ है?", "pronunciation": "station ka-haan hai"},
+        {"english": "Water, please", "local": "पानी दीजिए", "pronunciation": "paa-nee dee-ji-ye"},
+        {"english": "Help!", "local": "मदद कीजिए", "pronunciation": "ma-dad kee-ji-ye"},
+    ],
     "English": [
         {"english": "Hello", "local": "Hello", "pronunciation": "heh-loh"},
         {"english": "Thank you", "local": "Thank you", "pronunciation": "thank-yoo"},
@@ -133,7 +145,186 @@ EMERGENCY: dict[str, list[dict[str, str]]] = {
         {"label": "Tourist Police Lisbon", "number": "+351 213 421 634", "note": "Praça dos Restauradores"},
         {"label": "Health line SNS24", "number": "808 24 24 24", "note": ""},
     ],
+    "India": [
+        {"label": "All emergencies (ERSS)", "number": "112", "note": "Single number, works from any phone incl. locked SIM"},
+        {"label": "Police", "number": "100", "note": ""},
+        {"label": "Fire", "number": "101", "note": ""},
+        {"label": "Ambulance", "number": "102", "note": "108 in most states, and usually faster"},
+        {"label": "Tourist helpline", "number": "1800-11-1363", "note": "24/7, Ministry of Tourism, 12 languages"},
+        {"label": "Women's helpline", "number": "1091", "note": "24/7, nationwide"},
+        {"label": "Railway helpline", "number": "139", "note": "Enquiries, delays and on-train emergencies"},
+        {"label": "Disaster / NDRF", "number": "1078", "note": "Floods, landslides, cyclones"},
+    ],
 }
+
+EMERGENCY["India"] = [
+    {
+        "label": "All emergencies (ERSS)",
+        "number": "112",
+        "note": "One number for police, fire and ambulance, nationwide",
+    },
+    {"label": "Police", "number": "100", "note": ""},
+    {
+        "label": "Ambulance",
+        "number": "102",
+        "note": "108 also reaches emergency medical services in most states",
+    },
+    {"label": "Fire", "number": "101", "note": ""},
+    {
+        "label": "Tourist helpline",
+        "number": "1800-11-1363",
+        "note": "Ministry of Tourism, 24/7, multilingual",
+    },
+    {"label": "Women's helpline", "number": "1091", "note": ""},
+    {
+        "label": "Railway helpline",
+        "number": "139",
+        "note": "Enquiries, and emergencies on a train",
+    },
+]
+
+# Countries beyond the curated six. Without these a live destination falls
+# through to the generic list, which tells an Indian trip to dial 911.
+EMERGENCY.update(
+    {
+        "United States": [
+            {"label": "All emergencies", "number": "911", "note": ""},
+        ],
+        "USA": [{"label": "All emergencies", "number": "911", "note": ""}],
+        "Canada": [{"label": "All emergencies", "number": "911", "note": ""}],
+        "Mexico": [{"label": "All emergencies", "number": "911", "note": ""}],
+        "United Kingdom": [
+            {"label": "All emergencies", "number": "999", "note": "112 also works"},
+            {"label": "Non-emergency police", "number": "101", "note": ""},
+            {"label": "Non-emergency medical", "number": "111", "note": "NHS advice"},
+        ],
+        "Australia": [
+            {"label": "All emergencies", "number": "000", "note": "112 from a mobile"},
+        ],
+        "New Zealand": [{"label": "All emergencies", "number": "111", "note": ""}],
+        "Thailand": [
+            {"label": "Tourist police", "number": "1155", "note": "English speaking"},
+            {"label": "Police", "number": "191", "note": ""},
+            {"label": "Ambulance", "number": "1669", "note": ""},
+        ],
+        "Singapore": [
+            {"label": "Police", "number": "999", "note": ""},
+            {"label": "Ambulance & Fire", "number": "995", "note": ""},
+        ],
+        "Malaysia": [
+            {"label": "All emergencies", "number": "999", "note": "112 from a mobile"},
+        ],
+        "Vietnam": [
+            {"label": "Police", "number": "113", "note": ""},
+            {"label": "Fire", "number": "114", "note": ""},
+            {"label": "Ambulance", "number": "115", "note": ""},
+        ],
+        "Nepal": [
+            {"label": "Police", "number": "100", "note": ""},
+            {"label": "Ambulance", "number": "102", "note": ""},
+            {"label": "Tourist police", "number": "1144", "note": "Kathmandu"},
+        ],
+        "Sri Lanka": [
+            {"label": "Police emergency", "number": "119", "note": ""},
+            {"label": "Ambulance", "number": "1990", "note": "Suwa Seriya, free"},
+        ],
+        "United Arab Emirates": [
+            {"label": "Police", "number": "999", "note": ""},
+            {"label": "Ambulance", "number": "998", "note": ""},
+            {"label": "Fire", "number": "997", "note": ""},
+        ],
+        "Turkey": [
+            {"label": "All emergencies", "number": "112", "note": ""},
+        ],
+        "Egypt": [
+            {"label": "Police", "number": "122", "note": ""},
+            {"label": "Ambulance", "number": "123", "note": ""},
+            {"label": "Tourist police", "number": "126", "note": ""},
+        ],
+        "Brazil": [
+            {"label": "Police", "number": "190", "note": ""},
+            {"label": "Ambulance", "number": "192", "note": ""},
+        ],
+        "Germany": [
+            {"label": "All emergencies (EU)", "number": "112", "note": ""},
+            {"label": "Police", "number": "110", "note": ""},
+        ],
+        "Netherlands": [
+            {"label": "All emergencies (EU)", "number": "112", "note": ""},
+        ],
+        "Greece": [{"label": "All emergencies (EU)", "number": "112", "note": ""}],
+        "Switzerland": [
+            {"label": "Police", "number": "117", "note": ""},
+            {"label": "Ambulance", "number": "144", "note": ""},
+            {"label": "All emergencies", "number": "112", "note": ""},
+        ],
+    }
+)
+
+# Region-level contacts, for the cases where a state or city genuinely runs a
+# service the national numbers do not reach.
+#
+# Deliberately sparse. Most countries — India especially — have centralised
+# emergency dispatch, so there is no separate local number to publish: 112
+# (ERSS) reaches police, fire and ambulance in every Indian state. Inventing a
+# plausible-looking city number would be far worse than showing none, so this
+# only carries services that verifiably exist and are separately reachable.
+# The location-specific part travellers actually need is *where* the nearest
+# hospital and police station are, which is derived from the trip's own
+# coordinates in services/trips.py.
+REGIONAL_EMERGENCY: dict[str, dict[str, list[dict[str, str]]]] = {
+    "India": {
+        # 108 is the free emergency-ambulance service, run state by state and
+        # the number locals actually dial for a medical emergency.
+        "*": [
+            {
+                "label": "Ambulance (108 service)",
+                "number": "108",
+                "note": "Free state-run emergency ambulance, dispatched locally",
+            },
+        ],
+    },
+    "Indonesia": {
+        "Bali": [
+            {
+                "label": "Bali tourist police",
+                "number": "+62 361 754599",
+                "note": "English speaking",
+            },
+        ],
+    },
+    "Nepal": {
+        "*": [
+            {
+                "label": "Tourist police",
+                "number": "1144",
+                "note": "Kathmandu, English speaking",
+            },
+        ],
+    },
+}
+
+
+def regional_emergency(country: str, region: str, city: str) -> list[dict[str, str]]:
+    """Contacts specific to a state or city, most specific first.
+
+    Returns an empty list when nothing verified exists for the location, which
+    is the common case and the correct answer.
+    """
+    by_region = REGIONAL_EMERGENCY.get(country)
+    if not by_region:
+        return []
+
+    out: list[dict[str, str]] = []
+    for key in (city, region):
+        if key and key in by_region:
+            out.extend(by_region[key])
+    out.extend(by_region.get("*", []))
+
+    # Preserve order while dropping duplicates.
+    seen: set[str] = set()
+    return [c for c in out if not (c["number"] in seen or seen.add(c["number"]))]
+
 
 DEFAULT_EMERGENCY = [
     {"label": "International emergency", "number": "112", "note": "Routes to local services in most countries"},

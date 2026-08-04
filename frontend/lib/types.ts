@@ -315,8 +315,16 @@ export interface EmergencyContact {
   note: string;
 }
 
+export interface NearbyHelp {
+  label: string;
+  maps_url: string;
+  note: string;
+}
+
 export interface LocalInfo {
   country: string;
+  region: string;
+  city: string;
   language: string;
   currency: string;
   currency_rate_from_usd: number;
@@ -324,6 +332,7 @@ export interface LocalInfo {
   utc_offset_hours: number;
   phrases: Phrase[];
   emergency: EmergencyContact[];
+  nearby_help: NearbyHelp[];
   plug_type: string;
   tipping: string;
 }

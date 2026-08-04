@@ -118,6 +118,7 @@ export const api = {
   regeneratePacking: (id: string) => post<Trip>(`/api/trips/${id}/packing/regenerate`),
   getLocalInfo: (id: string) => request<LocalInfo>(`/api/trips/${id}/local`),
   getOffline: (id: string) => request<OfflineBundle>(`/api/trips/${id}/offline`),
+  offlinePdfUrl: (id: string) => `${BASE}/api/trips/${id}/offline.pdf`,
   getShareLink: (id: string) =>
     request<{ token: string; path: string }>(`/api/trips/${id}/share`),
 

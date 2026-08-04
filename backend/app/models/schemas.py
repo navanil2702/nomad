@@ -423,8 +423,24 @@ class EmergencyContact(BaseModel):
     note: str = ""
 
 
+class NearbyHelp(BaseModel):
+    """Where the nearest help actually is, from the trip's own coordinates.
+
+    India routes every emergency through 112 nationwide, so there is no
+    city-specific *number* to show — the location-specific part is the location
+    itself. These resolve against wherever the trip is, so they cannot go
+    stale the way a hardcoded local number can.
+    """
+
+    label: str
+    maps_url: str
+    note: str = ""
+
+
 class LocalInfo(BaseModel):
     country: str
+    region: str = ""
+    city: str = ""
     language: str
     currency: str
     currency_rate_from_usd: float
@@ -432,6 +448,7 @@ class LocalInfo(BaseModel):
     utc_offset_hours: float
     phrases: list[Phrase]
     emergency: list[EmergencyContact]
+    nearby_help: list[NearbyHelp] = Field(default_factory=list)
     plug_type: str = ""
     tipping: str = ""
 

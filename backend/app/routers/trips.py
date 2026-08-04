@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from ..core.config import get_settings
 from ..models.schemas import (
@@ -140,6 +140,27 @@ def get_share_link(trip_id: str) -> dict:
 
 
 # --- offline bundle -------------------------------------------------------
+
+
+@router.get("/{trip_id}/offline.pdf")
+def offline_pdf(trip_id: str) -> Response:
+    """The itinerary as a printable PDF.
+
+    Every stop with its address, hours, cost, tip and coordinates, plus
+    emergency numbers, phrases and what is still unpacked — the things you
+    need when there is no signal to load the app itself.
+    """
+    from ..services import pdf as pdf_svc
+
+    trip = _load(trip_id)
+    document = pdf_svc.build(trip, trips_svc.local_info(trip))
+    return Response(
+        content=document,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{pdf_svc.filename(trip)}"'
+        },
+    )
 
 
 @router.get("/{trip_id}/offline")
