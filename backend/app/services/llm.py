@@ -4,8 +4,12 @@ Deliberately narrow. The companion's *decisions* -- which stop to swap, what
 to reorder -- are made deterministically in companion.py so they are testable
 and never hallucinated. This module only phrases those decisions.
 
-When OPENAI_API_KEY is absent every function returns its template fallback,
-which is why the product is fully usable offline.
+Groq and OpenAI both speak the OpenAI chat-completions protocol, so the only
+difference between them is the base URL, the model name and which key is set;
+core/config.py resolves all three.
+
+With no model key at all every function returns its template fallback, which is
+why the product is fully usable offline.
 """
 
 from __future__ import annotations

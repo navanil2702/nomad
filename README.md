@@ -8,13 +8,13 @@ A real-time travel companion. It builds a day-by-day plan around your budget,
 pace and the actual forecast — then keeps watching, and rewrites the plan
 before the problem reaches you.
 
-It uses **live Google Places, Google Maps, OpenWeather and OpenAI** when keys are
+It uses **live Google Places, Google Maps, OpenWeather and Groq** when keys are
 configured, and falls back to offline engines when they are missing or failing —
 so it still runs end to end with **zero API keys and zero infrastructure**.
 
 > The live demo is on Vercel's free tier, so the first request after an idle
-> spell wakes the API and takes a few seconds. Check the badge in the header to
-> see which providers are actually live on it.
+> spell wakes the API and takes a few seconds. `GET /api/providers` says which
+> providers are live on it; `POST /api/providers/check` actually calls them.
 
 ---
 
@@ -57,7 +57,7 @@ when a key is present — only *phrases* the changes that already happened. So
 the companion physically cannot promise a swap it didn't make, and every reply
 ships with a diff of what actually moved.
 
-With no `OPENAI_API_KEY`, the templates take over and the product behaves
+With no model key at all, the templates take over and the product behaves
 identically. The intelligence is in the planner, not the prose.
 
 ### What it reacts to
@@ -122,15 +122,19 @@ nomad/
 │       ├── data/                curated place catalog, phrases, FX, emergency
 │       ├── services/
 │       │   ├── places.py           catalog resolution, travel time, Maps links
+│       │   ├── google_places.py    live catalogs, autocomplete, photos
 │       │   ├── itinerary.py        the planner
 │       │   ├── companion.py        intent detection + itinerary mutations
 │       │   ├── proactive.py        the unprompted engine
 │       │   ├── weather.py          OpenWeather + offline climate model
+│       │   ├── fx.py               ECB rates + static fallback
 │       │   ├── packing.py          forecast-derived packing list
 │       │   ├── journal.py          daily entries + trip retrospective
-│       │   ├── llm.py              narration only, never decisions
+│       │   ├── pdf.py              the printable offline itinerary
+│       │   ├── llm.py              phrasing and price estimates, never decisions
+│       │   ├── providers.py        live/fallback state + TTL caching
 │       │   └── trips.py            orchestration
-│       ├── routers/             trips, companion, expenses, journal, tools
+│       ├── routers/             trips, companion, expenses, journal, places, tools
 │       ├── store.py             JSON-file store + Supabase adapter
 │       └── seed.py              the demo trip
 └── frontend/                 Next.js 14 · TypeScript · Tailwind · Framer Motion
@@ -175,7 +179,7 @@ expense re-runs the proactive scan.
 highlights and an inferred mood. At the end, a bound retrospective.
 
 **Toolbox** — local phrases with pronunciation, emergency numbers, currency
-converter, live time-zone comparison, a downloadable offline bundle, and a
+converter on live ECB rates, time-zone comparison, a printable PDF itinerary, and a
 read-only share link.
 
 ---
@@ -199,26 +203,30 @@ default.
 Mock weather looks exactly like real weather, which makes a silent fallback the
 most dangerous failure mode here. So `GET /api/providers` reports, per provider,
 whether it is `live`, `ready` (configured but not yet called), `fallback` (tried
-and failed, with the reason) or `offline` (no key). The header badge in the app
-shows the same thing.
+and failed, with the reason) or `offline` (no key).
+
+`POST /api/providers/check` goes further and *calls* each one, because the
+status endpoint only knows what its own process has seen — and on serverless
+that is rarely the instance that built your trip.
 
 Failures are cached for two minutes, so one outage costs a single slow request
 rather than one per page load.
 
 ### Keys
 
-Set on the backend: `GOOGLE_MAPS_API_KEY`, `OPENWEATHER_API_KEY`, and one of
-`GROQ_API_KEY` / `OPENAI_API_KEY` — both speak the OpenAI chat-completions
-protocol, so only the base URL and model name differ, and Groq wins if both are
-set. Set on the frontend: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` for the
+Set on the backend: `GOOGLE_MAPS_API_KEY`, `OPENWEATHER_API_KEY`, and a model
+key — `GROQ_API_KEY` or `OPENAI_API_KEY`. Both speak the OpenAI
+chat-completions protocol, so only the base URL and model name differ; Groq
+wins if both are set, and is what the live demo runs. Set on the frontend: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` for the
 map itself — a **separate, browser-restricted key**, because that one is public.
 
 Places photos are proxied through `/api/places/photo`, which resolves them to
 signed, key-less URLs server-side, so the Places key never reaches a browser.
 
-> The spec asked for GPT-5.5. That isn't a model I can verify exists, so the
-> model id is an env var (`OPENAI_MODEL`) defaulting to `gpt-4o-mini`. Point it
-> at whatever you actually have access to.
+> The spec asked for GPT-5.5, which isn't a model I can verify exists, so the
+> provider and model are both env vars. The deployed instance runs Groq with
+> `llama-3.3-70b-versatile`; point `GROQ_MODEL` or `OPENAI_MODEL` at whatever
+> you actually have access to.
 
 ---
 
@@ -267,11 +275,15 @@ POST   /api/trips/{id}/alerts/{aid}/apply | /undo | /dismiss
 
 GET    /api/trips/{id}/map                 GET /api/trips/{id}/weather
 GET    /api/trips/{id}/packing             GET /api/trips/{id}/local
-GET    /api/trips/{id}/offline             GET /api/trips/{id}/share
+GET    /api/trips/{id}/offline             GET /api/trips/{id}/offline.pdf
+GET    /api/trips/{id}/share
 POST   /api/trips/{id}/expenses            GET /api/trips/{id}/expenses/stats
 POST   /api/trips/{id}/journal/autowrite   GET /api/trips/{id}/journal/retrospective
 
-GET    /api/destinations                   GET /api/currency/convert
+GET    /api/destinations                   GET /api/destinations/search
+GET    /api/currency/convert               GET /api/currency/rates
+GET    /api/providers                      POST /api/providers/check
+GET    /api/places/photo
 GET    /api/timezone                       GET /api/shared/{token}
 ```
 
@@ -296,4 +308,5 @@ same-origin and there is no CORS to configure.
 
 - Deep-link any dashboard panel with `?tab=map`, `?tab=expenses`, etc.
 - Trips are capped at 20 days; the planner degrades past a fortnight.
-- Currency rates are indicative offline values, not a live FX feed.
+- Currency rates are live ECB reference rates via Frankfurter, cached six
+  hours, falling back to a static table. Mid-market, not what a card charges.

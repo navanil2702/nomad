@@ -167,7 +167,7 @@ duplicates. Set `SEED_DEMO_TRIP=false` to deploy with an empty database
 instead.
 
 **`maxDuration`.** Set to 30s in `backend/vercel.json`. Hobby plans cap at 60s.
-Only relevant if you enable `OPENAI_API_KEY` and the model is slow.
+Only relevant if you enable a model key and that model is slow.
 
 **Preview deployments.** Every branch gets its own frontend URL, but they all
 point at the same `API_URL` and therefore the same Supabase data. Use a second
