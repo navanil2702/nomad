@@ -368,6 +368,44 @@ COUNTRY_COST_INDEX: dict[str, float] = {
 
 DEFAULT_COUNTRY_COST_INDEX = 0.85
 
+# Google returns whatever the local address convention uses — "UK", not
+# "United Kingdom" — while these tables are keyed by the long form. Rather than
+# alias every entry in four separate maps, the country name is normalised once,
+# where it is derived.
+COUNTRY_ALIASES: dict[str, str] = {
+    "uk": "United Kingdom",
+    "u.k.": "United Kingdom",
+    "great britain": "United Kingdom",
+    "britain": "United Kingdom",
+    "england": "United Kingdom",
+    "scotland": "United Kingdom",
+    "wales": "United Kingdom",
+    "northern ireland": "United Kingdom",
+    "usa": "United States",
+    "us": "United States",
+    "u.s.": "United States",
+    "u.s.a.": "United States",
+    "america": "United States",
+    "uae": "United Arab Emirates",
+    "czech republic": "Czechia",
+    "holland": "Netherlands",
+    "the netherlands": "Netherlands",
+    "korea": "South Korea",
+    "republic of korea": "South Korea",
+    "türkiye": "Turkey",
+    "turkiye": "Turkey",
+    "viet nam": "Vietnam",
+    "myanmar (burma)": "Myanmar",
+    "russian federation": "Russia",
+    "ivory coast": "Côte d'Ivoire",
+}
+
+
+def canonical_country(name: str) -> str:
+    """The long-form country name these tables are keyed by."""
+    cleaned = (name or "").strip()
+    return COUNTRY_ALIASES.get(cleaned.lower(), cleaned)
+
 # Country -> (language, currency). Used when a destination comes from a live
 # provider rather than the curated catalog, which carries its own values.
 COUNTRY_PROFILE: dict[str, tuple[str, str]] = {
@@ -411,6 +449,37 @@ COUNTRY_PROFILE: dict[str, tuple[str, str]] = {
     "South Korea": ("Korean", "KRW"),
     "China": ("Chinese", "CNY"),
 }
+
+COUNTRY_META.update(
+    {
+        "India": {"plug": "Type C/D/M, 230V", "tipping": "10% in restaurants; round up for autos and drivers."},
+        "United Kingdom": {"plug": "Type G, 230V", "tipping": "10-12.5%, often already on the bill as service."},
+        "United States": {"plug": "Type A/B, 120V", "tipping": "18-22% expected in restaurants; it is not optional."},
+        "Canada": {"plug": "Type A/B, 120V", "tipping": "15-20% in restaurants."},
+        "Australia": {"plug": "Type I, 230V", "tipping": "Not expected. Round up if you like."},
+        "New Zealand": {"plug": "Type I, 230V", "tipping": "Not expected."},
+        "Germany": {"plug": "Type F, 230V", "tipping": "Round up or add 5-10%, handed to the server."},
+        "Netherlands": {"plug": "Type F, 230V", "tipping": "Rounding up is plenty."},
+        "Greece": {"plug": "Type F, 230V", "tipping": "5-10% in tavernas."},
+        "Switzerland": {"plug": "Type J, 230V", "tipping": "Service included. Round up only."},
+        "Czechia": {"plug": "Type E, 230V", "tipping": "10%, told to the server as you pay."},
+        "Turkey": {"plug": "Type F, 230V", "tipping": "5-10%."},
+        "Thailand": {"plug": "Type A/B/C, 230V", "tipping": "Not traditional; round up, 10% at nicer places."},
+        "Singapore": {"plug": "Type G, 230V", "tipping": "Not expected; service charge is usually added."},
+        "Malaysia": {"plug": "Type G, 230V", "tipping": "Not expected."},
+        "Vietnam": {"plug": "Type A/C, 220V", "tipping": "Not expected; appreciated in tourist areas."},
+        "Nepal": {"plug": "Type C/D/M, 230V", "tipping": "10%; more for trekking guides and porters."},
+        "Sri Lanka": {"plug": "Type D/G/M, 230V", "tipping": "10% where no service charge is added."},
+        "United Arab Emirates": {"plug": "Type G, 230V", "tipping": "10-15%; a service charge is not a tip."},
+        "Egypt": {"plug": "Type C/F, 220V", "tipping": "Baksheesh is customary. Carry small notes."},
+        "Morocco": {"plug": "Type C/E, 220V", "tipping": "5-10%, and small coins for guardians and guides."},
+        "Brazil": {"plug": "Type N, 127/220V", "tipping": "10% is usually already on the bill."},
+        "Mexico": {"plug": "Type A/B, 127V", "tipping": "10-15% in restaurants."},
+        "South Africa": {"plug": "Type M/N, 230V", "tipping": "10-15%, plus car guards a few rand."},
+        "China": {"plug": "Type A/C/I, 220V", "tipping": "Not customary."},
+        "South Korea": {"plug": "Type C/F, 220V", "tipping": "Not customary and can confuse."},
+    }
+)
 
 DEFAULT_COUNTRY_META = {
     "plug": "Check a universal adapter covers Type A/C/G",

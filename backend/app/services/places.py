@@ -184,9 +184,11 @@ def _climate_for(lat: float) -> str:
 
 def _live_meta(destination: str, catalog: dict) -> dict:
     """Turn a live Places catalog into the meta a Destination expects."""
-    from ..data.knowledge import COUNTRY_PROFILE
+    from ..data.knowledge import COUNTRY_PROFILE, canonical_country
 
-    country = catalog.get("country") or destination.split(",")[-1].strip().title()
+    country = canonical_country(
+        catalog.get("country") or destination.split(",")[-1].strip().title()
+    )
     language, currency = COUNTRY_PROFILE.get(country, ("English", "USD"))
     centre = catalog["center"]
 

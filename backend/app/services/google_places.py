@@ -397,8 +397,10 @@ def visit_duration(category: Interest | str) -> int:
 
 
 def _country_from_address(address: str) -> str:
+    from ..data.knowledge import canonical_country
+
     parts = [p.strip() for p in address.split(",") if p.strip()]
-    return parts[-1] if parts else ""
+    return canonical_country(parts[-1]) if parts else ""
 
 
 def _centre(places: list[Place]) -> Coordinates:
