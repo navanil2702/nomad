@@ -248,7 +248,7 @@ export function TripForm({ destinations }: { destinations: DestinationOption[] }
               <div>
                 <h2 className="text-2xl font-semibold tracking-tight">Where to?</h2>
                 <p className="mt-1 text-muted-foreground">
-                  Any city works. These ones have hand-researched place catalogs.
+                  Any city in the world. These ones also have hand-checked catalogs.
                 </p>
               </div>
 

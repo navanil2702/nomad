@@ -68,7 +68,7 @@ const FEATURES = [
   {
     icon: Languages,
     title: "The small stuff, handled",
-    body: "Local phrases, emergency numbers, currency and time-zone conversion, and an offline copy of the whole itinerary.",
+    body: "Local phrases, emergency numbers with the nearest hospital and police, live currency and time-zone conversion, and a printable PDF of the whole trip.",
   },
 ];
 
@@ -215,9 +215,10 @@ export default async function LandingPage() {
                   Curated down to the opening hours
                 </h2>
                 <p className="mt-4 text-muted-foreground">
-                  These cities have researched place catalogs behind them — indoor
-                  alternatives, walking effort, price level and real tips. Anywhere
-                  else still works; it just plans from a generated catalog.
+                  These cities have hand-checked catalogs behind them — real
+                  prices, indoor alternatives, walking effort and tips written by
+                  someone who went. Everywhere else is planned from live Google
+                  Places, with the same attributes derived automatically.
                 </p>
               </div>
               <Button variant="outline" asChild>
@@ -282,7 +283,7 @@ export default async function LandingPage() {
           <p>Nomad — a travel companion, not a chatbot.</p>
           <p className="flex items-center gap-1.5">
             <WifiOff className="size-3.5" />
-            Runs fully offline with mock providers
+            Live data when it's there, offline engines when it isn't
           </p>
         </div>
       </footer>
